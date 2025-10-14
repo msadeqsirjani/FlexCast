@@ -3,26 +3,13 @@ Base Deep Learning Model for FlexTrack Challenge 2025
 Provides common functionality for PyTorch-based models
 """
 
-import os
-
-# Set environment variables BEFORE importing torch
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-# Disable parallelism that can cause segfaults on macOS
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-os.environ["KMP_INIT_AT_FORK"] = "FALSE"
-
 import torch
 import torch.nn as nn
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple
-import joblib
 from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 # Force single-threaded execution to avoid segfaults
 torch.set_num_threads(1)
@@ -248,56 +235,49 @@ class BaseDeepLearningModel:
         print(f"Device: {self.device}")
         print("-" * 60)
 
-        # Simple epoch loop without tqdm to avoid segmentation faults
-        for epoch in range(self.epochs):
+        # Training loop with tqdm progress bars
+        epoch_pbar = tqdm(range(self.epochs), desc="Training", unit="epoch")
+        
+        for epoch in epoch_pbar:
             # Training phase
             self.model.train()
             train_loss = 0.0
-            batch_count = 0
 
-            print(f"Starting epoch {epoch+1}...")
-            for i, (batch_X, batch_y) in enumerate(train_loader):
-                if i == 0:
-                    print(f"  Processing first batch (shape: {batch_X.shape})...")
-
+            # Progress bar for batches
+            batch_pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.epochs}", 
+                            leave=False, unit="batch")
+            
+            for i, (batch_X, batch_y) in enumerate(batch_pbar):
                 try:
                     batch_X = batch_X.to(self.device)
                     batch_y = batch_y.to(self.device)
 
-                    if i == 0:
-                        print(f"  Moved to device...")
-
                     # Forward pass
                     self.optimizer.zero_grad()
 
-                    if i == 0:
-                        print(f"  Starting forward pass...")
-                        # Test with a very small batch first to catch issues early
+                    if i == 0 and epoch == 0:
+                        # Test with a very small batch first on first epoch
                         with torch.no_grad():
                             test_out = self.model(batch_X[:1])
-                            print(f"  Test forward pass OK, output shape: {test_out.shape}")
 
                     outputs = self.model(batch_X).squeeze()
 
-                    if i == 0:
-                        print(f"  Forward pass complete, outputs shape: {outputs.shape}")
                 except RuntimeError as e:
                     print(f"\n✗ RuntimeError during training: {e}")
                     print(f"  This may be a PyTorch/BLAS library issue on your system.")
                     raise
 
                 # Calculate loss
-                if self.task == "classification":
-                    loss = criterion(outputs, batch_y)
-                else:
-                    loss = criterion(outputs, batch_y)
+                loss = criterion(outputs, batch_y)
 
                 # Backward pass
                 loss.backward()
                 self.optimizer.step()
 
                 train_loss += loss.item()
-                batch_count += 1
+                
+                # Update batch progress bar
+                batch_pbar.set_postfix({'loss': f'{loss.item():.4f}'})
 
             train_loss /= len(train_loader)
             self.history["train_loss"].append(train_loss)
@@ -308,43 +288,43 @@ class BaseDeepLearningModel:
                 val_loss = 0.0
 
                 with torch.no_grad():
-                    for batch_X, batch_y in val_loader:
+                    val_pbar = tqdm(val_loader, desc="Validating", leave=False, unit="batch")
+                    for batch_X, batch_y in val_pbar:
                         batch_X = batch_X.to(self.device)
                         batch_y = batch_y.to(self.device)
 
                         outputs = self.model(batch_X).squeeze()
-
-                        if self.task == "classification":
-                            loss = criterion(outputs, batch_y)
-                        else:
-                            loss = criterion(outputs, batch_y)
-
+                        loss = criterion(outputs, batch_y)
                         val_loss += loss.item()
+                        
+                        val_pbar.set_postfix({'loss': f'{loss.item():.4f}'})
 
                 val_loss /= len(val_loader)
                 self.history["val_loss"].append(val_loss)
 
-                # Print progress
-                print(
-                    f"Epoch {epoch+1}/{self.epochs} - "
-                    f"train_loss: {train_loss:.4f}, "
-                    f"val_loss: {val_loss:.4f}, "
-                    f"best_val: {best_val_loss:.4f}"
-                )
+                # Update epoch progress bar
+                epoch_pbar.set_postfix({
+                    'train_loss': f'{train_loss:.4f}',
+                    'val_loss': f'{val_loss:.4f}',
+                    'best_val': f'{best_val_loss:.4f}'
+                })
 
                 # Early stopping
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     patience_counter = 0
-                    print(f"  ✓ New best model at epoch {epoch+1}")
+                    tqdm.write(f"✓ New best model at epoch {epoch+1} - val_loss: {val_loss:.4f}")
                 else:
                     patience_counter += 1
 
                 if patience_counter >= self.early_stopping_patience:
-                    print(f"\nEarly stopping at epoch {epoch+1}")
+                    tqdm.write(f"Early stopping at epoch {epoch+1}")
                     break
             else:
-                print(f"Epoch {epoch+1}/{self.epochs} - train_loss: {train_loss:.4f}")
+                epoch_pbar.set_postfix({'train_loss': f'{train_loss:.4f}'})
+                
+        epoch_pbar.close()
+        
         print(f"\nTraining completed!")
         print(f"Final train loss: {self.history['train_loss'][-1]:.4f}")
         if X_val is not None:
