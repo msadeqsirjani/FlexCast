@@ -260,7 +260,7 @@ class BaseDeepLearningModel:
                         with torch.no_grad():
                             test_out = self.model(batch_X[:1])
 
-                    outputs = self.model(batch_X).squeeze()
+                    outputs = self.model(batch_X).squeeze(-1)
 
                 except RuntimeError as e:
                     print(f"\n✗ RuntimeError during training: {e}")
@@ -293,7 +293,7 @@ class BaseDeepLearningModel:
                         batch_X = batch_X.to(self.device)
                         batch_y = batch_y.to(self.device)
 
-                        outputs = self.model(batch_X).squeeze()
+                        outputs = self.model(batch_X).squeeze(-1)
                         loss = criterion(outputs, batch_y)
                         val_loss += loss.item()
                         
@@ -363,7 +363,7 @@ class BaseDeepLearningModel:
         with torch.no_grad():
             for batch_X, _ in dataloader:
                 batch_X = batch_X.to(self.device)
-                outputs = self.model(batch_X).squeeze()
+                outputs = self.model(batch_X).squeeze(-1)
 
                 if self.task == "classification":
                     # Apply sigmoid for binary classification
@@ -416,7 +416,7 @@ class BaseDeepLearningModel:
         with torch.no_grad():
             for batch_X, _ in dataloader:
                 batch_X = batch_X.to(self.device)
-                outputs = self.model(batch_X).squeeze()
+                outputs = self.model(batch_X).squeeze(-1)
                 outputs = torch.sigmoid(outputs)
                 predictions.append(outputs.cpu().numpy())
 
