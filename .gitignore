@@ -105,8 +105,8 @@ site/
 tmp/
 temp/
 
-# Model Checkpoints
-models/
+# Model Checkpoints (saved/trained models, not source code)
+/models/
 checkpoints/
 saved_models/
 
