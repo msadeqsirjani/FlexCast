@@ -306,7 +306,8 @@ class FlexTrackPipeline:
                         print(f"Training MAE: {train_results['mae']:.4f}")
                         print(f"Validation MAE: {val_results['mae']:.4f}")
                         print(f"Validation RMSE: {val_results['rmse']:.4f}")
-                        print(f"Validation CV-RMSE: {val_results['cv_rmse']:.4f}")
+                        if 'cv_rmse' in val_results:
+                            print(f"Validation CV-RMSE: {val_results['cv_rmse']:.4f}")
 
                     # Store results
                     self.results[key] = {
@@ -539,8 +540,9 @@ class FlexTrackPipeline:
             for name, res in data["results"].items():
                 if "regression" in name:
                     vr = res["validation"]
+                    cv_rmse_val = vr.get('cv_rmse', 0.0)
                     print(
-                        f"{name.replace('_regression', ''):<20} {site:<10} {vr['mae']:>10.4f} {vr['rmse']:>10.4f} {vr['cv_rmse']:>10.4f}"
+                        f"{name.replace('_regression', ''):<20} {site:<10} {vr['mae']:>10.4f} {vr['rmse']:>10.4f} {cv_rmse_val:>10.4f}"
                     )
 
         # Save to file
@@ -557,8 +559,9 @@ class FlexTrackPipeline:
                             f"    F1: {vr['f1_score_macro']:.4f}, GM: {vr['geometric_mean_score']:.4f}\n"
                         )
                     else:
+                        cv_rmse_val = vr.get('cv_rmse', 0.0)
                         f.write(
-                            f"    MAE: {vr['mae']:.4f}, RMSE: {vr['rmse']:.4f}, CV-RMSE: {vr['cv_rmse']:.4f}\n"
+                            f"    MAE: {vr['mae']:.4f}, RMSE: {vr['rmse']:.4f}, CV-RMSE: {cv_rmse_val:.4f}\n"
                         )
         print(f"\nSaved to: {comp_path}")
 
