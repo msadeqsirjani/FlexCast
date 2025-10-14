@@ -111,6 +111,9 @@ class HistGradientBoostingModel:
             f"Using {'HistGradientBoostingClassifier' if self.task == 'classification' else 'HistGradientBoostingRegressor'}"
         )
         print(f"Training samples: {len(X_train)}")
+        if X_val is not None:
+            print(f"Validation samples: {len(X_val)}")
+        print(f"Early stopping rounds (n_iter_no_change): {early_stopping_rounds}")
 
         # Update early stopping parameter
         params_copy = self.params.copy()

@@ -110,6 +110,7 @@ class CatBoostModel:
         # Training with or without validation
         if X_val is not None and y_val is not None:
             print(f"Validation samples: {len(X_val)}")
+            print(f"Early stopping rounds: {early_stopping_rounds}")
             self.model.fit(
                 X_train,
                 y_train_adjusted,
@@ -118,6 +119,8 @@ class CatBoostModel:
                 early_stopping_rounds=early_stopping_rounds,
                 verbose=False,
             )
+            print(f"Best iteration: {self.model.best_iteration_}")
+            print(f"Best score: {self.model.best_score_['validation']:.4f}")
         else:
             self.model.fit(
                 X_train, y_train_adjusted, cat_features=cat_features, verbose=False

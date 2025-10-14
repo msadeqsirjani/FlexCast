@@ -112,6 +112,7 @@ class LightGBMModel:
         callbacks = []
         if X_val is not None and y_val is not None:
             print(f"Validation samples: {len(X_val)}")
+            print(f"Early stopping rounds: {early_stopping_rounds}")
             callbacks.append(
                 lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=False)
             )
@@ -121,6 +122,7 @@ class LightGBMModel:
                 eval_set=[(X_val, y_val_adjusted)],
                 callbacks=callbacks,
             )
+            print(f"Best iteration: {self.model.best_iteration_}")
         else:
             self.model.fit(X_train, y_train_adjusted)
 
