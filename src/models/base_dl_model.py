@@ -61,22 +61,34 @@ class BaseDeepLearningModel:
         self.epochs = epochs
         self.early_stopping_patience = early_stopping_patience
 
-        # Set device - force CPU to avoid issues
-        self.device = torch.device("cpu")
+        # Set device with CUDA support
+        if device is not None:
+            self.device = torch.device(device)
+        else:
+            # Auto-detect: CUDA > CPU
+            if torch.cuda.is_available():
+                self.device = torch.device("cuda")
+                print(f"CUDA available! Using GPU: {torch.cuda.get_device_name(0)}")
+            else:
+                self.device = torch.device("cpu")
+                print("CUDA not available, using CPU")
         
         # Additional safety settings for macOS
         import platform
-        if platform.system() == "Darwin":
+        if platform.system() == "Darwin" and self.device.type == "cpu":
             torch.set_num_threads(1)
             torch.set_num_interop_threads(1)
-            # Disable MKLDNN which can cause segfaults
+            # Disable MKLDNN which can cause segfaults on macOS
             try:
                 torch.backends.mkldnn.enabled = False
             except:
                 pass
 
         print(f"Using device: {self.device}")
-        print(f"PyTorch threads: {torch.get_num_threads()}")
+        if self.device.type == "cuda":
+            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        else:
+            print(f"PyTorch threads: {torch.get_num_threads()}")
 
         self.model = None
         self.optimizer = None
@@ -158,13 +170,17 @@ class BaseDeepLearningModel:
     ) -> torch.utils.data.DataLoader:
         """Create PyTorch DataLoader"""
         dataset = torch.utils.data.TensorDataset(X, y)
+        
+        # Enable pin_memory for faster GPU transfer
+        use_pin_memory = self.device.type == "cuda"
+        
         return torch.utils.data.DataLoader(
             dataset,
             batch_size=self.batch_size,
             shuffle=shuffle,
             drop_last=False,
-            num_workers=0,  # Avoid multiprocessing issues
-            pin_memory=False,  # Avoid memory pinning issues
+            num_workers=0,  # Keep 0 to avoid multiprocessing issues
+            pin_memory=use_pin_memory,  # Enable for CUDA
         )
 
     def train(
