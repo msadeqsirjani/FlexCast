@@ -8,7 +8,8 @@ import numpy as np
 from pathlib import Path
 from typing import Tuple, Optional
 import warnings
-warnings.filterwarnings('ignore')
+
+warnings.filterwarnings("ignore")
 
 
 class DataLoader:
@@ -45,13 +46,15 @@ class DataLoader:
         self.training_data = pd.read_csv(files[0])
 
         # Parse timestamp
-        self.training_data['Timestamp_Local'] = pd.to_datetime(
-            self.training_data['Timestamp_Local']
+        self.training_data["Timestamp_Local"] = pd.to_datetime(
+            self.training_data["Timestamp_Local"]
         )
 
         print(f"Loaded {len(self.training_data)} training samples")
         print(f"Sites: {self.training_data['Site'].unique()}")
-        print(f"Date range: {self.training_data['Timestamp_Local'].min()} to {self.training_data['Timestamp_Local'].max()}")
+        print(
+            f"Date range: {self.training_data['Timestamp_Local'].min()} to {self.training_data['Timestamp_Local'].max()}"
+        )
 
         return self.training_data
 
@@ -75,15 +78,17 @@ class DataLoader:
         self.test_data = pd.read_csv(files[0])
 
         # Parse timestamp
-        self.test_data['Timestamp_Local'] = pd.to_datetime(
-            self.test_data['Timestamp_Local']
+        self.test_data["Timestamp_Local"] = pd.to_datetime(
+            self.test_data["Timestamp_Local"]
         )
 
         print(f"Loaded {len(self.test_data)} test samples")
 
         return self.test_data
 
-    def get_site_data(self, site: str, data: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def get_site_data(
+        self, site: str, data: Optional[pd.DataFrame] = None
+    ) -> pd.DataFrame:
         """
         Filter data for a specific site
 
@@ -100,16 +105,13 @@ class DataLoader:
         if data is None:
             raise ValueError("No data loaded. Call load_training_data() first.")
 
-        site_data = data[data['Site'] == site].copy()
+        site_data = data[data["Site"] == site].copy()
         print(f"Site {site}: {len(site_data)} samples")
 
         return site_data
 
     def split_train_validation(
-        self,
-        data: pd.DataFrame,
-        validation_size: float = 0.2,
-        time_based: bool = True
+        self, data: pd.DataFrame, validation_size: float = 0.2, time_based: bool = True
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Split data into training and validation sets
@@ -124,13 +126,14 @@ class DataLoader:
         """
         if time_based:
             # Sort by timestamp
-            data = data.sort_values('Timestamp_Local')
+            data = data.sort_values("Timestamp_Local")
             split_idx = int(len(data) * (1 - validation_size))
             train_df = data.iloc[:split_idx].copy()
             val_df = data.iloc[split_idx:].copy()
         else:
             # Random split
             from sklearn.model_selection import train_test_split
+
             train_df, val_df = train_test_split(
                 data, test_size=validation_size, random_state=42
             )
@@ -151,34 +154,40 @@ class DataLoader:
             Dictionary with statistics
         """
         stats = {
-            'num_samples': len(data),
-            'num_sites': data['Site'].nunique(),
-            'sites': data['Site'].unique().tolist(),
-            'date_range': (
-                data['Timestamp_Local'].min(),
-                data['Timestamp_Local'].max()
+            "num_samples": len(data),
+            "num_sites": data["Site"].nunique(),
+            "sites": data["Site"].unique().tolist(),
+            "date_range": (
+                data["Timestamp_Local"].min(),
+                data["Timestamp_Local"].max(),
             ),
-            'dr_flag_distribution': data['Demand_Response_Flag'].value_counts().to_dict() if 'Demand_Response_Flag' in data.columns else None,
-            'missing_values': data.isnull().sum().to_dict(),
-            'power_stats': {
-                'mean': data['Building_Power_kW'].mean(),
-                'std': data['Building_Power_kW'].std(),
-                'min': data['Building_Power_kW'].min(),
-                'max': data['Building_Power_kW'].max()
-            }
+            "dr_flag_distribution": (
+                data["Demand_Response_Flag"].value_counts().to_dict()
+                if "Demand_Response_Flag" in data.columns
+                else None
+            ),
+            "missing_values": data.isnull().sum().to_dict(),
+            "power_stats": {
+                "mean": data["Building_Power_kW"].mean(),
+                "std": data["Building_Power_kW"].std(),
+                "min": data["Building_Power_kW"].min(),
+                "max": data["Building_Power_kW"].max(),
+            },
         }
 
-        if 'Demand_Response_Capacity_kW' in data.columns:
-            stats['capacity_stats'] = {
-                'mean': data['Demand_Response_Capacity_kW'].mean(),
-                'std': data['Demand_Response_Capacity_kW'].std(),
-                'min': data['Demand_Response_Capacity_kW'].min(),
-                'max': data['Demand_Response_Capacity_kW'].max()
+        if "Demand_Response_Capacity_kW" in data.columns:
+            stats["capacity_stats"] = {
+                "mean": data["Demand_Response_Capacity_kW"].mean(),
+                "std": data["Demand_Response_Capacity_kW"].std(),
+                "min": data["Demand_Response_Capacity_kW"].min(),
+                "max": data["Demand_Response_Capacity_kW"].max(),
             }
 
         return stats
 
-    def handle_missing_values(self, data: pd.DataFrame, method: str = 'ffill') -> pd.DataFrame:
+    def handle_missing_values(
+        self, data: pd.DataFrame, method: str = "ffill"
+    ) -> pd.DataFrame:
         """
         Handle missing values in the dataset
 
@@ -191,14 +200,14 @@ class DataLoader:
         """
         data = data.copy()
 
-        if method == 'ffill':
-            data = data.fillna(method='ffill')
-        elif method == 'bfill':
-            data = data.fillna(method='bfill')
-        elif method == 'interpolate':
+        if method == "ffill":
+            data = data.fillna(method="ffill")
+        elif method == "bfill":
+            data = data.fillna(method="bfill")
+        elif method == "interpolate":
             numeric_cols = data.select_dtypes(include=[np.number]).columns
-            data[numeric_cols] = data[numeric_cols].interpolate(method='linear')
-        elif method == 'drop':
+            data[numeric_cols] = data[numeric_cols].interpolate(method="linear")
+        elif method == "drop":
             data = data.dropna()
 
         # Fill any remaining NaN with 0
