@@ -90,7 +90,7 @@ class BaseDeepLearningModel:
             return nn.MSELoss()
 
     def _prepare_sequences(
-        self, X: np.ndarray, y: np.ndarray, stride: int = None
+        self, X: np.ndarray, y: np.ndarray, stride: int = None, override_stride: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Prepare sequential data for training using stride to reduce memory
@@ -330,9 +330,9 @@ class BaseDeepLearningModel:
         # Scale features
         X_scaled = self.scaler.transform(X)
 
-        # Create dummy y for sequence preparation
+        # Create dummy y for sequence preparation - use stride=1 for predictions
         y_dummy = np.zeros(len(X))
-        X_seq, _ = self._prepare_sequences(X_scaled, y_dummy)
+        X_seq, _ = self._prepare_sequences(X_scaled, y_dummy, stride=1)
 
         # Create dataloader
         dataloader = self._create_dataloader(
@@ -383,9 +383,9 @@ class BaseDeepLearningModel:
         # Scale features
         X_scaled = self.scaler.transform(X)
 
-        # Create dummy y for sequence preparation
+        # Create dummy y for sequence preparation - use stride=1 for predictions
         y_dummy = np.zeros(len(X))
-        X_seq, _ = self._prepare_sequences(X_scaled, y_dummy)
+        X_seq, _ = self._prepare_sequences(X_scaled, y_dummy, stride=1)
 
         # Create dataloader
         dataloader = self._create_dataloader(
