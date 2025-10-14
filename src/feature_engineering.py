@@ -7,7 +7,8 @@ import pandas as pd
 import numpy as np
 from typing import List
 import warnings
-warnings.filterwarnings('ignore')
+
+warnings.filterwarnings("ignore")
 
 
 class FeatureEngineer:
@@ -30,36 +31,40 @@ class FeatureEngineer:
         data = data.copy()
 
         # Extract temporal components
-        data['hour'] = data['Timestamp_Local'].dt.hour
-        data['day_of_week'] = data['Timestamp_Local'].dt.dayofweek
-        data['day_of_month'] = data['Timestamp_Local'].dt.day
-        data['month'] = data['Timestamp_Local'].dt.month
-        data['quarter'] = data['Timestamp_Local'].dt.quarter
-        data['day_of_year'] = data['Timestamp_Local'].dt.dayofyear
-        data['week_of_year'] = data['Timestamp_Local'].dt.isocalendar().week.astype(int)
+        data["hour"] = data["Timestamp_Local"].dt.hour
+        data["day_of_week"] = data["Timestamp_Local"].dt.dayofweek
+        data["day_of_month"] = data["Timestamp_Local"].dt.day
+        data["month"] = data["Timestamp_Local"].dt.month
+        data["quarter"] = data["Timestamp_Local"].dt.quarter
+        data["day_of_year"] = data["Timestamp_Local"].dt.dayofyear
+        data["week_of_year"] = data["Timestamp_Local"].dt.isocalendar().week.astype(int)
 
         # Cyclical encoding for periodic features
         # Hour (24-hour cycle)
-        data['hour_sin'] = np.sin(2 * np.pi * data['hour'] / 24)
-        data['hour_cos'] = np.cos(2 * np.pi * data['hour'] / 24)
+        data["hour_sin"] = np.sin(2 * np.pi * data["hour"] / 24)
+        data["hour_cos"] = np.cos(2 * np.pi * data["hour"] / 24)
 
         # Day of week (7-day cycle)
-        data['day_of_week_sin'] = np.sin(2 * np.pi * data['day_of_week'] / 7)
-        data['day_of_week_cos'] = np.cos(2 * np.pi * data['day_of_week'] / 7)
+        data["day_of_week_sin"] = np.sin(2 * np.pi * data["day_of_week"] / 7)
+        data["day_of_week_cos"] = np.cos(2 * np.pi * data["day_of_week"] / 7)
 
         # Month (12-month cycle)
-        data['month_sin'] = np.sin(2 * np.pi * data['month'] / 12)
-        data['month_cos'] = np.cos(2 * np.pi * data['month'] / 12)
+        data["month_sin"] = np.sin(2 * np.pi * data["month"] / 12)
+        data["month_cos"] = np.cos(2 * np.pi * data["month"] / 12)
 
         # Day of year (365-day cycle)
-        data['day_of_year_sin'] = np.sin(2 * np.pi * data['day_of_year'] / 365)
-        data['day_of_year_cos'] = np.cos(2 * np.pi * data['day_of_year'] / 365)
+        data["day_of_year_sin"] = np.sin(2 * np.pi * data["day_of_year"] / 365)
+        data["day_of_year_cos"] = np.cos(2 * np.pi * data["day_of_year"] / 365)
 
         # Binary features
-        data['is_weekend'] = (data['day_of_week'] >= 5).astype(int)
-        data['is_business_hours'] = ((data['hour'] >= 9) & (data['hour'] <= 17)).astype(int)
-        data['is_peak_hours'] = ((data['hour'] >= 17) & (data['hour'] <= 21)).astype(int)
-        data['is_night'] = ((data['hour'] >= 22) | (data['hour'] <= 6)).astype(int)
+        data["is_weekend"] = (data["day_of_week"] >= 5).astype(int)
+        data["is_business_hours"] = ((data["hour"] >= 9) & (data["hour"] <= 17)).astype(
+            int
+        )
+        data["is_peak_hours"] = ((data["hour"] >= 17) & (data["hour"] <= 21)).astype(
+            int
+        )
+        data["is_night"] = ((data["hour"] >= 22) | (data["hour"] <= 6)).astype(int)
 
         print(f"Created {21} temporal features")
 
@@ -69,7 +74,7 @@ class FeatureEngineer:
         self,
         data: pd.DataFrame,
         columns: List[str],
-        lags: List[int] = [1, 2, 4, 8, 12, 24, 48, 96]
+        lags: List[int] = [1, 2, 4, 8, 12, 24, 48, 96],
     ) -> pd.DataFrame:
         """
         Create lag features for time-series data
@@ -91,7 +96,7 @@ class FeatureEngineer:
 
             for lag in lags:
                 lag_col = f"{col}_lag_{lag}"
-                data[lag_col] = data.groupby('Site')[col].shift(lag)
+                data[lag_col] = data.groupby("Site")[col].shift(lag)
                 lag_features.append(lag_col)
 
         print(f"Created {len(lag_features)} lag features")
@@ -102,7 +107,7 @@ class FeatureEngineer:
         self,
         data: pd.DataFrame,
         columns: List[str],
-        windows: List[int] = [4, 8, 12, 24, 48, 96]
+        windows: List[int] = [4, 8, 12, 24, 48, 96],
     ) -> pd.DataFrame:
         """
         Create rolling window statistical features
@@ -125,28 +130,28 @@ class FeatureEngineer:
             for window in windows:
                 # Rolling mean
                 roll_mean_col = f"{col}_rolling_mean_{window}"
-                data[roll_mean_col] = data.groupby('Site')[col].transform(
+                data[roll_mean_col] = data.groupby("Site")[col].transform(
                     lambda x: x.rolling(window=window, min_periods=1).mean()
                 )
                 rolling_features.append(roll_mean_col)
 
                 # Rolling std
                 roll_std_col = f"{col}_rolling_std_{window}"
-                data[roll_std_col] = data.groupby('Site')[col].transform(
+                data[roll_std_col] = data.groupby("Site")[col].transform(
                     lambda x: x.rolling(window=window, min_periods=1).std()
                 )
                 rolling_features.append(roll_std_col)
 
                 # Rolling min
                 roll_min_col = f"{col}_rolling_min_{window}"
-                data[roll_min_col] = data.groupby('Site')[col].transform(
+                data[roll_min_col] = data.groupby("Site")[col].transform(
                     lambda x: x.rolling(window=window, min_periods=1).min()
                 )
                 rolling_features.append(roll_min_col)
 
                 # Rolling max
                 roll_max_col = f"{col}_rolling_max_{window}"
-                data[roll_max_col] = data.groupby('Site')[col].transform(
+                data[roll_max_col] = data.groupby("Site")[col].transform(
                     lambda x: x.rolling(window=window, min_periods=1).max()
                 )
                 rolling_features.append(roll_max_col)
@@ -168,38 +173,44 @@ class FeatureEngineer:
         data = data.copy()
 
         # Temperature-related interactions
-        if 'Dry_Bulb_Temperature_C' in data.columns:
+        if "Dry_Bulb_Temperature_C" in data.columns:
             # Temperature squared (non-linear effect)
-            data['temp_squared'] = data['Dry_Bulb_Temperature_C'] ** 2
+            data["temp_squared"] = data["Dry_Bulb_Temperature_C"] ** 2
 
             # Temperature categories
-            data['temp_category'] = pd.cut(
-                data['Dry_Bulb_Temperature_C'],
+            data["temp_category"] = pd.cut(
+                data["Dry_Bulb_Temperature_C"],
                 bins=[-np.inf, 10, 20, 30, np.inf],
-                labels=[0, 1, 2, 3]
+                labels=[0, 1, 2, 3],
             ).astype(int)
 
         # Solar radiation interactions
-        if 'Global_Horizontal_Radiation_W/m2' in data.columns:
+        if "Global_Horizontal_Radiation_W/m2" in data.columns:
             # Solar radiation squared
-            data['solar_squared'] = data['Global_Horizontal_Radiation_W/m2'] ** 2
+            data["solar_squared"] = data["Global_Horizontal_Radiation_W/m2"] ** 2
 
             # Is daylight
-            data['is_daylight'] = (data['Global_Horizontal_Radiation_W/m2'] > 50).astype(int)
+            data["is_daylight"] = (
+                data["Global_Horizontal_Radiation_W/m2"] > 50
+            ).astype(int)
 
         # Temperature and solar interaction
-        if 'Dry_Bulb_Temperature_C' in data.columns and 'Global_Horizontal_Radiation_W/m2' in data.columns:
-            data['temp_solar_interaction'] = (
-                data['Dry_Bulb_Temperature_C'] * data['Global_Horizontal_Radiation_W/m2']
+        if (
+            "Dry_Bulb_Temperature_C" in data.columns
+            and "Global_Horizontal_Radiation_W/m2" in data.columns
+        ):
+            data["temp_solar_interaction"] = (
+                data["Dry_Bulb_Temperature_C"]
+                * data["Global_Horizontal_Radiation_W/m2"]
             )
 
         # Building power features
-        if 'Building_Power_kW' in data.columns:
+        if "Building_Power_kW" in data.columns:
             # Power squared
-            data['power_squared'] = data['Building_Power_kW'] ** 2
+            data["power_squared"] = data["Building_Power_kW"] ** 2
 
             # Power rate of change
-            data['power_rate_change'] = data.groupby('Site')['Building_Power_kW'].diff()
+            data["power_rate_change"] = data.groupby("Site")["Building_Power_kW"].diff()
 
         print(f"Created interaction features")
 
@@ -218,7 +229,7 @@ class FeatureEngineer:
         data = data.copy()
 
         # One-hot encoding for sites
-        site_dummies = pd.get_dummies(data['Site'], prefix='site')
+        site_dummies = pd.get_dummies(data["Site"], prefix="site")
         data = pd.concat([data, site_dummies], axis=1)
 
         print(f"Created site encoding features")
@@ -231,7 +242,7 @@ class FeatureEngineer:
         include_lags: bool = True,
         include_rolling: bool = True,
         lag_columns: List[str] = None,
-        rolling_columns: List[str] = None
+        rolling_columns: List[str] = None,
     ) -> pd.DataFrame:
         """
         Create all features at once
@@ -260,9 +271,9 @@ class FeatureEngineer:
         # Default columns for lag and rolling features
         if lag_columns is None:
             lag_columns = [
-                'Building_Power_kW',
-                'Dry_Bulb_Temperature_C',
-                'Global_Horizontal_Radiation_W/m2'
+                "Building_Power_kW",
+                "Dry_Bulb_Temperature_C",
+                "Global_Horizontal_Radiation_W/m2",
             ]
 
         if rolling_columns is None:
@@ -277,12 +288,14 @@ class FeatureEngineer:
             data = self.create_rolling_features(data, rolling_columns)
 
         # Fill any NaN values created by lag/rolling operations
-        data = data.fillna(method='bfill').fillna(0)
+        data = data.fillna(method="bfill").fillna(0)
 
         # Get feature names (exclude target and identifier columns)
         exclude_cols = [
-            'Site', 'Timestamp_Local', 'Demand_Response_Flag',
-            'Demand_Response_Capacity_kW'
+            "Site",
+            "Timestamp_Local",
+            "Demand_Response_Flag",
+            "Demand_Response_Capacity_kW",
         ]
         self.feature_names = [col for col in data.columns if col not in exclude_cols]
 
