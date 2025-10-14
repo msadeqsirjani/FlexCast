@@ -119,9 +119,6 @@ class BaseDeepLearningModel:
         indices = np.arange(0, len(X) - self.sequence_length + 1, stride)
         n_samples = len(indices)
         
-        print(f"DEBUG: Creating {n_samples} sequences (stride={stride}) of length {self.sequence_length}")
-        print(f"DEBUG: Memory needed: ~{(n_samples * self.sequence_length * n_features * 4) / (1024**2):.1f} MB")
-        
         # Convert to float32 to reduce memory
         if X.dtype != np.float32:
             X = X.astype(np.float32)
@@ -141,15 +138,12 @@ class BaseDeepLearningModel:
                 X_list.append(X[idx:idx+self.sequence_length])
                 y_list.append(y[idx+self.sequence_length-1])
         
-        print("DEBUG: Stacking sequences...")
         X_sequences = np.stack(X_list, axis=0)
         y_sequences = np.array(y_list, dtype=np.float32)
         
-        print("DEBUG: Converting to tensors...")
         X_tensor = torch.from_numpy(X_sequences)
         y_tensor = torch.from_numpy(y_sequences)
         
-        print("DEBUG: Sequence preparation complete")
         return (X_tensor, y_tensor)
 
     def _create_dataloader(
@@ -189,41 +183,28 @@ class BaseDeepLearningModel:
         if self.model is None:
             raise ValueError("Model not initialized. Call build_model() first.")
 
-        print("DEBUG: Starting training...")
-        print(f"DEBUG: X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")
-
         # Scale features
-        print("DEBUG: Scaling features...")
         X_train_scaled = self.scaler.fit_transform(X_train)
         if X_val is not None:
             X_val_scaled = self.scaler.transform(X_val)
-        print("DEBUG: Scaling complete")
 
         # Prepare sequences
-        print("DEBUG: Preparing sequences...")
         X_train_seq, y_train_seq = self._prepare_sequences(X_train_scaled, y_train)
-        print(f"DEBUG: Train sequences prepared: X shape {X_train_seq.shape}, y shape {y_train_seq.shape}")
 
         if X_val is not None:
             X_val_seq, y_val_seq = self._prepare_sequences(X_val_scaled, y_val)
-            print(f"DEBUG: Val sequences prepared: X shape {X_val_seq.shape}, y shape {y_val_seq.shape}")
 
         # Create dataloaders
-        print("DEBUG: Creating dataloaders...")
         train_loader = self._create_dataloader(X_train_seq, y_train_seq, shuffle=True)
-        print("DEBUG: Train dataloader created")
 
         if X_val is not None:
             val_loader = self._create_dataloader(X_val_seq, y_val_seq, shuffle=False)
-            print("DEBUG: Val dataloader created")
 
         # Loss and optimizer
-        print("DEBUG: Creating optimizer...")
         criterion = self._get_loss_function()
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.learning_rate
         )
-        print("DEBUG: Optimizer created")
 
         # Training loop
         best_val_loss = float("inf")
