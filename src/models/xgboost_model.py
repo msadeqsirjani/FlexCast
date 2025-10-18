@@ -46,6 +46,7 @@ class XGBoostModel:
                     "random_state": 42,
                     "n_jobs": -1,
                     "tree_method": "hist",
+                    "early_stopping_rounds": 50,
                 }
             else:  # regression
                 self.params = {
@@ -62,6 +63,7 @@ class XGBoostModel:
                     "random_state": 42,
                     "n_jobs": -1,
                     "tree_method": "hist",
+                    "early_stopping_rounds": 50,
                 }
         else:
             self.params = params
@@ -107,16 +109,18 @@ class XGBoostModel:
         # Training with or without validation
         if X_val is not None and y_val is not None:
             print(f"Validation samples: {len(X_val)}")
-            print(f"Early stopping rounds: {early_stopping_rounds}")
+            print(f"Early stopping rounds: {self.params.get('early_stopping_rounds', 50)}")
             eval_set = [(X_train, y_train_adjusted), (X_val, y_val_adjusted)]
             self.model.fit(
-                X_train, 
-                y_train_adjusted, 
-                eval_set=eval_set, 
+                X_train,
+                y_train_adjusted,
+                eval_set=eval_set,
                 verbose=False
             )
-            print(f"Best iteration: {self.model.best_iteration}")
-            print(f"Best score: {self.model.best_score:.4f}")
+            if hasattr(self.model, 'best_iteration'):
+                print(f"Best iteration: {self.model.best_iteration}")
+            if hasattr(self.model, 'best_score'):
+                print(f"Best score: {self.model.best_score:.4f}")
         else:
             self.model.fit(X_train, y_train_adjusted, verbose=False)
 
