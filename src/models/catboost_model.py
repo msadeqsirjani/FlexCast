@@ -43,6 +43,7 @@ class CatBoostModel:
                     "verbose": False,
                     "thread_count": -1,
                     "task_type": "CPU",
+                    "auto_class_weights": "Balanced",  # Handle class imbalance automatically
                 }
             else:  # regression
                 self.params = {
