@@ -48,6 +48,7 @@ class LightGBMModel:
                     "random_state": 42,
                     "n_jobs": -1,
                     "verbose": -1,
+                    "class_weight": "balanced",  # Handle class imbalance automatically
                 }
             else:  # regression
                 self.params = {
