@@ -120,7 +120,15 @@ class CatBoostModel:
                 verbose=False,
             )
             print(f"Best iteration: {self.model.best_iteration_}")
-            print(f"Best score: {self.model.best_score_['validation']:.4f}")
+            # best_score_ is a nested dict, get the first metric value
+            if hasattr(self.model, 'best_score_') and 'validation' in self.model.best_score_:
+                validation_scores = self.model.best_score_['validation']
+                if isinstance(validation_scores, dict):
+                    # Get the first metric value
+                    first_metric = list(validation_scores.values())[0]
+                    print(f"Best score: {first_metric:.4f}")
+                else:
+                    print(f"Best score: {validation_scores:.4f}")
         else:
             self.model.fit(
                 X_train, y_train_adjusted, cat_features=cat_features, verbose=False
