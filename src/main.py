@@ -42,6 +42,13 @@ from models.xgboost_model import XGBoostModel
 from models.lightgbm_model import LightGBMModel
 from models.catboost_model import CatBoostModel
 from models.histgb_model import HistGradientBoostingModel
+from threshold_optimizer import ThresholdOptimizer
+
+# For handling class imbalance
+from imblearn.over_sampling import SMOTE, ADASYN
+from imblearn.combine import SMOTEENN
+import pandas as pd
+import numpy as np
 
 
 class FlexTrackPipeline:
@@ -51,6 +58,7 @@ class FlexTrackPipeline:
         self,
         data_dir: str = "../data",
         output_dir: str = "../results",
+        sampler: str = "none",
     ):
         """
         Initialize pipeline
@@ -58,10 +66,12 @@ class FlexTrackPipeline:
         Args:
             data_dir: Directory containing data files
             output_dir: Directory for outputs
+            sampler: Sampling method for class imbalance ('none', 'smote', 'adasyn', 'smoteenn')
         """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
+        self.sampler = sampler
 
         self.loader = DataLoader(data_dir)
         self.engineer = FeatureEngineer()
@@ -136,6 +146,62 @@ class FlexTrackPipeline:
             feature_names,
         )
 
+    def apply_resampling(self, X_train, y_train, method='smote'):
+        """
+        Apply resampling to balance classes
+
+        Args:
+            X_train: Training features
+            y_train: Training labels
+            method: Resampling method ('smote', 'adasyn', 'smoteenn')
+
+        Returns:
+            Tuple of (X_resampled, y_resampled)
+        """
+        print("\n" + "=" * 80)
+        print(f"APPLYING {method.upper()} FOR CLASS IMBALANCE")
+        print("=" * 80)
+
+        # Adjust labels for resampling (-1, 0, 1) -> (0, 1, 2)
+        y_adjusted = y_train + 1
+
+        print(f"\nOriginal class distribution:")
+        unique, counts = np.unique(y_adjusted, return_counts=True)
+        for cls, count in zip(unique, counts):
+            print(f"  Class {cls-1}: {count} samples ({count/len(y_adjusted)*100:.1f}%)")
+
+        # Apply resampling based on method
+        min_samples = min(counts)
+        k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
+
+        if method == 'smote':
+            sampler = SMOTE(random_state=42, k_neighbors=k_neighbors, sampling_strategy='auto')
+        elif method == 'adasyn':
+            # ADASYN: Adaptive Synthetic Sampling - generates more samples for harder-to-learn examples
+            sampler = ADASYN(random_state=42, n_neighbors=k_neighbors, sampling_strategy='auto')
+        elif method == 'smoteenn':
+            # SMOTEENN: SMOTE + Edited Nearest Neighbors - oversamples then cleans up noisy samples
+            sampler = SMOTEENN(random_state=42, smote=SMOTE(random_state=42, k_neighbors=k_neighbors))
+        else:
+            raise ValueError(f"Unknown sampling method: {method}")
+
+        print(f"Using {method.upper()} with k_neighbors={k_neighbors}")
+        X_resampled, y_resampled = sampler.fit_resample(X_train, y_adjusted)
+
+        # Convert back to DataFrames with original column names
+        X_resampled = pd.DataFrame(X_resampled, columns=X_train.columns)
+        y_resampled = pd.Series(y_resampled - 1, name=y_train.name)  # Convert back to -1, 0, 1
+
+        print(f"\nResampled class distribution:")
+        unique_new, counts_new = np.unique(y_resampled + 1, return_counts=True)
+        for cls, count in zip(unique_new, counts_new):
+            print(f"  Class {cls-1}: {count} samples ({count/len(y_resampled)*100:.1f}%)")
+
+        print(f"\nTotal samples: {len(X_train)} → {len(X_resampled)} ({len(X_resampled) - len(X_train):+d} samples)")
+        print("=" * 80)
+
+        return X_resampled, y_resampled
+
     def train_all_models(
         self,
         X_train,
@@ -174,6 +240,12 @@ class FlexTrackPipeline:
             y_train = y_train_class if task == "classification" else y_train_reg
             y_val = y_val_class if task == "classification" else y_val_reg
 
+            # Apply resampling for classification if enabled
+            if task == "classification" and self.sampler != "none":
+                X_train_balanced, y_train_balanced = self.apply_resampling(X_train, y_train, method=self.sampler)
+            else:
+                X_train_balanced, y_train_balanced = X_train, y_train
+
             for model_name, ModelClass in model_classes.items():
                 print(f"\n{'='*80}")
                 print(f"MODEL: {model_name} ({task})")
@@ -182,32 +254,53 @@ class FlexTrackPipeline:
                 try:
                     # Create model with appropriate parameters
                     model = ModelClass(task=task)
-                    model.train(X_train, y_train, X_val, y_val)
+                    model.train(X_train_balanced, y_train_balanced, X_val, y_val)
 
                     # Store model
                     key = f"{model_name}_{task}"
                     self.models[key] = model
 
-                    # Make predictions
-                    train_pred = model.predict(X_train)
-                    val_pred = model.predict(X_val)
-
                     # Evaluate
                     if task == "classification":
-                        train_results = self.evaluator.evaluate_classification(
-                            y_train, train_pred, detailed=False
-                        )
-                        val_results = self.evaluator.evaluate_classification(
-                            y_val, val_pred, detailed=True
+                        # Use threshold optimization for better F1 scores
+                        print(f"\n{model_name} - THRESHOLD OPTIMIZATION:")
+
+                        # Get probability predictions
+                        train_proba = model.predict_proba(X_train)
+                        val_proba = model.predict_proba(X_val)
+
+                        # Optimize thresholds on validation set
+                        optimizer = ThresholdOptimizer(classes=[-1, 0, 1])
+                        opt_results = optimizer.optimize_thresholds(
+                            y_val.values, val_proba, metric='f1_macro'
                         )
 
-                        print(f"\n{model_name} Results:")
+                        # Store optimizer with model
+                        self.models[key + "_optimizer"] = optimizer
+
+                        # Get optimized predictions
+                        train_pred_opt = optimizer.predict(train_proba)
+                        val_pred_opt = opt_results['predictions']
+
+                        # Evaluate with optimized predictions
+                        train_results = self.evaluator.evaluate_classification(
+                            y_train, train_pred_opt, detailed=False
+                        )
+                        val_results = self.evaluator.evaluate_classification(
+                            y_val, val_pred_opt, detailed=True
+                        )
+
+                        print(f"\n{model_name} Results (WITH THRESHOLD OPTIMIZATION):")
                         print(f"Training F1: {train_results['f1_score_macro']:.4f}")
                         print(f"Validation F1: {val_results['f1_score_macro']:.4f}")
                         print(
                             f"Validation GM: {val_results['geometric_mean_score']:.4f}"
                         )
                     else:
+                        # Regression: use regular predictions
+                        train_pred = model.predict(X_train)
+                        val_pred = model.predict(X_val)
+
                         train_results = self.evaluator.evaluate_regression(
                             y_train, train_pred, self.building_power_stats
                         )
@@ -293,8 +386,10 @@ class FlexTrackPipeline:
         models_dir.mkdir(exist_ok=True, parents=True)
 
         for name, model in self.models.items():
-            model_path = models_dir / f"{name}_{site}.pkl"
-            model.save_model(str(model_path))
+            # Skip saving optimizer objects (they're stored alongside models)
+            if "_optimizer" not in name:
+                model_path = models_dir / f"{name}_{site}.pkl"
+                model.save_model(str(model_path))
 
         print(f"\nResults saved to: {results_path}")
         print(f"Models saved to: {models_dir}")
@@ -555,6 +650,13 @@ def main():
         choices=["single", "site-specific", "merged", "all"],
         help="Training mode: single site, site-specific, merged, or all (default: single)",
     )
+    parser.add_argument(
+        "--sampler",
+        type=str,
+        default="none",
+        choices=["none", "smote", "adasyn", "smoteenn"],
+        help="Sampling method for class imbalance: none, smote, adasyn, or smoteenn (default: none)",
+    )
 
     args = parser.parse_args()
 
@@ -562,6 +664,7 @@ def main():
     pipeline = FlexTrackPipeline(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
+        sampler=args.sampler,
     )
 
     pipeline.run_full_pipeline(
