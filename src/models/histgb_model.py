@@ -126,19 +126,28 @@ class HistGradientBoostingModel:
             if y_val is not None:
                 y_val_adjusted = y_val + 1
 
+            # Compute sample weights for class imbalance
+            from sklearn.utils.class_weight import compute_sample_weight
+            sample_weights = compute_sample_weight('balanced', y_train_adjusted)
+            print("Applied balanced sample weights for class imbalance")
+
             # Create the classifier
             self.model = HistGradientBoostingClassifier(**params_copy)
             print("Target classes adjusted: -1, 0, 1 -> 0, 1, 2")
         else:
             y_train_adjusted = y_train
             y_val_adjusted = y_val if y_val is not None else None
+            sample_weights = None
 
             # Create the regressor
             self.model = HistGradientBoostingRegressor(**params_copy)
 
         # Train the model
         # HistGradientBoosting uses internal validation split if early_stopping=True
-        self.model.fit(X_train, y_train_adjusted)
+        if sample_weights is not None:
+            self.model.fit(X_train, y_train_adjusted, sample_weight=sample_weights)
+        else:
+            self.model.fit(X_train, y_train_adjusted)
 
         print(f"Training completed!")
         print(f"Number of iterations: {self.model.n_iter_}")
