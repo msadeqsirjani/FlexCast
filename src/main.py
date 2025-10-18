@@ -365,9 +365,10 @@ class FlexTrackPipeline:
         all_site_results = {}
         for site in sites:
             print(f"\n{'#'*80}\n# SITE: {site.upper()}\n{'#'*80}")
-            X_train, y_train_class, y_train_reg, X_val, y_val_class, y_val_reg, _ = (
+            X_train, y_train_class, y_train_reg, X_val, y_val_class, y_val_reg, feature_names = (
                 self.load_and_prepare_data(site=site, version=version)
             )
+            self.feature_names = feature_names
 
             self.models, self.results = {}, {}
             self.train_all_models(
@@ -398,9 +399,10 @@ class FlexTrackPipeline:
         print(f"MERGED MODEL TRAINING: {', '.join(sites)}")
         print("=" * 80)
 
-        X_train, y_train_class, y_train_reg, X_val, y_val_class, y_val_reg, _ = (
+        X_train, y_train_class, y_train_reg, X_val, y_val_class, y_val_reg, feature_names = (
             self.prepare_merged_data(sites=sites, version=version)
         )
+        self.feature_names = feature_names
 
         self.models, self.results = {}, {}
         self.train_all_models(
@@ -489,9 +491,10 @@ class FlexTrackPipeline:
         sites = ["siteA", "siteB", "siteC"]
 
         if training_mode == "single":
-            X_train, y_train_class, y_train_reg, X_val, y_val_class, y_val_reg, _ = (
+            X_train, y_train_class, y_train_reg, X_val, y_val_class, y_val_reg, feature_names = (
                 self.load_and_prepare_data(site=site, version=version)
             )
+            self.feature_names = feature_names
             self.train_all_models(
                 X_train,
                 y_train_class,
