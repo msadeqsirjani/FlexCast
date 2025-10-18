@@ -2,37 +2,26 @@
 Main Training and Prediction Pipeline
 Energy Flexibility and Demand Response Challenge
 
-This script trains and evaluates models:
+This script trains and evaluates traditional machine learning models:
 
-Traditional ML Models:
 1. XGBoost
 2. LightGBM
 3. CatBoost
 4. HistGradientBoosting (with proper Classifier/Regressor usage)
 
-Deep Learning Models (requires PyTorch):
-5. LSTM (Long Short-Term Memory)
-6. GRU (Gated Recurrent Unit)
-7. CNN (1D Convolutional Neural Network)
-8. TCN (Temporal Convolutional Network)
-9. Transformer
-
 Usage:
   # Single site training
-  python main.py                                              # Train on siteA (traditional ML)
+  python main.py                                              # Train on siteA
   python main.py --site siteB                                 # Train on siteB
-  python main.py --models-type all                            # Train all models (ML + DL)
 
   # Site-specific training (separate model for each site)
   python main.py --training-mode site-specific                # Train siteA, siteB, siteC models
-  python main.py --training-mode site-specific --models-type all
 
   # Merged training (single model on all sites)
   python main.py --training-mode merged                       # Train one model on all sites
 
   # Comprehensive training (both site-specific and merged)
   python main.py --training-mode all                          # Train both strategies
-  python main.py --training-mode all --models-type all        # All strategies + all models
 """
 
 import argparse
@@ -54,20 +43,6 @@ from models.lightgbm_model import LightGBMModel
 from models.catboost_model import CatBoostModel
 from models.histgb_model import HistGradientBoostingModel
 
-# Try to import deep learning models (requires PyTorch)
-DEEP_LEARNING_AVAILABLE = False
-try:
-    from models.lstm_model import LSTMModel
-    from models.gru_model import GRUModel
-    from models.cnn_model import CNNModel
-    from models.tcn_model import TCNModel
-    from models.transformer_model import TransformerModel
-
-    DEEP_LEARNING_AVAILABLE = True
-except ImportError as e:
-    print(f"Warning: Deep learning models not available. Install PyTorch to use them.")
-    print(f"Error: {e}")
-
 
 class FlexTrackPipeline:
     """Complete pipeline for FlexTrack Challenge"""
@@ -76,9 +51,6 @@ class FlexTrackPipeline:
         self,
         data_dir: str = "../data",
         output_dir: str = "../results",
-        sequence_length: int = 96,
-        dl_epochs: int = 50,
-        dl_batch_size: int = 64,
     ):
         """
         Initialize pipeline
@@ -86,17 +58,10 @@ class FlexTrackPipeline:
         Args:
             data_dir: Directory containing data files
             output_dir: Directory for outputs
-            sequence_length: Sequence length for deep learning models (default: 96 = 24 hours)
-            dl_epochs: Training epochs for deep learning models
-            dl_batch_size: Batch size for deep learning models
         """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
-
-        self.sequence_length = sequence_length
-        self.dl_epochs = dl_epochs
-        self.dl_batch_size = dl_batch_size
 
         self.loader = DataLoader(data_dir)
         self.engineer = FeatureEngineer()
@@ -180,7 +145,6 @@ class FlexTrackPipeline:
         y_val_class,
         y_val_reg,
         tasks: list = ["classification", "regression"],
-        models_type: str = "traditional",
     ):
         """
         Train models for specified tasks
@@ -189,43 +153,18 @@ class FlexTrackPipeline:
             X_train, y_train_class, y_train_reg: Training data
             X_val, y_val_class, y_val_reg: Validation data
             tasks: List of tasks to train for
-            models_type: 'traditional', 'deep-learning', or 'all'
         """
         print("\n" + "=" * 80)
         print("TRAINING MODELS")
         print("=" * 80)
 
         # Traditional ML models
-        traditional_models = {
+        model_classes = {
             "XGBoost": XGBoostModel,
             "LightGBM": LightGBMModel,
             "CatBoost": CatBoostModel,
             "HistGradientBoosting": HistGradientBoostingModel,
         }
-
-        # Deep learning models
-        deep_learning_models = {}
-        if DEEP_LEARNING_AVAILABLE:
-            deep_learning_models = {
-                "LSTM": LSTMModel,
-                "GRU": GRUModel,
-                "CNN": CNNModel,
-                "TCN": TCNModel,
-                "Transformer": TransformerModel,
-            }
-
-        # Select which models to train
-        model_classes = {}
-        if models_type in ["traditional", "all"]:
-            model_classes.update(traditional_models)
-        if models_type in ["deep-learning", "all"]:
-            if not DEEP_LEARNING_AVAILABLE:
-                print(
-                    "\nWarning: Deep learning models requested but PyTorch not available!"
-                )
-                print("Install PyTorch with: pip install torch torchvision")
-            else:
-                model_classes.update(deep_learning_models)
 
         for task in tasks:
             print(f"\n{'='*80}")
@@ -242,42 +181,16 @@ class FlexTrackPipeline:
 
                 try:
                     # Create model with appropriate parameters
-                    if model_name in deep_learning_models:
-                        # Deep learning model
-                        model = ModelClass(
-                            task=task,
-                            sequence_length=self.sequence_length,
-                            epochs=self.dl_epochs,
-                            batch_size=self.dl_batch_size,
-                            early_stopping_patience=10,
-                        )
-                        # Convert to numpy arrays for deep learning
-                        X_train_np = (
-                            X_train.values if hasattr(X_train, "values") else X_train
-                        )
-                        X_val_np = X_val.values if hasattr(X_val, "values") else X_val
-                        y_train_np = (
-                            y_train.values if hasattr(y_train, "values") else y_train
-                        )
-                        y_val_np = y_val.values if hasattr(y_val, "values") else y_val
-
-                        model.train(X_train_np, y_train_np, X_val_np, y_val_np)
-                    else:
-                        # Traditional ML model
-                        model = ModelClass(task=task)
-                        model.train(X_train, y_train, X_val, y_val)
+                    model = ModelClass(task=task)
+                    model.train(X_train, y_train, X_val, y_val)
 
                     # Store model
                     key = f"{model_name}_{task}"
                     self.models[key] = model
 
                     # Make predictions
-                    if model_name in deep_learning_models:
-                        train_pred = model.predict(X_train_np)
-                        val_pred = model.predict(X_val_np)
-                    else:
-                        train_pred = model.predict(X_train)
-                        val_pred = model.predict(X_val)
+                    train_pred = model.predict(X_train)
+                    val_pred = model.predict(X_val)
 
                     # Evaluate
                     if task == "classification":
@@ -380,14 +293,7 @@ class FlexTrackPipeline:
         models_dir.mkdir(exist_ok=True, parents=True)
 
         for name, model in self.models.items():
-            # Use .pth extension for PyTorch models, .pkl for others
-            if any(
-                dl_model in name
-                for dl_model in ["LSTM", "GRU", "CNN", "TCN", "Transformer"]
-            ):
-                model_path = models_dir / f"{name}_{site}.pth"
-            else:
-                model_path = models_dir / f"{name}_{site}.pkl"
+            model_path = models_dir / f"{name}_{site}.pkl"
             model.save_model(str(model_path))
 
         print(f"\nResults saved to: {results_path}")
@@ -450,7 +356,6 @@ class FlexTrackPipeline:
         self,
         sites: list = ["siteA", "siteB", "siteC"],
         version: str = "v0.2",
-        models_type: str = "traditional",
     ):
         """Train separate models for each site"""
         print("\n" + "=" * 80)
@@ -472,7 +377,6 @@ class FlexTrackPipeline:
                 X_val,
                 y_val_class,
                 y_val_reg,
-                models_type=models_type,
             )
 
             all_site_results[site] = {
@@ -488,7 +392,6 @@ class FlexTrackPipeline:
         self,
         sites: list = ["siteA", "siteB", "siteC"],
         version: str = "v0.2",
-        models_type: str = "traditional",
     ):
         """Train single merged model on all sites"""
         print("\n" + "=" * 80)
@@ -507,7 +410,6 @@ class FlexTrackPipeline:
             X_val,
             y_val_class,
             y_val_reg,
-            models_type=models_type,
         )
         self.evaluate_and_compare()
         self.save_results(site="merged", subfolder="merged")
@@ -569,7 +471,6 @@ class FlexTrackPipeline:
         self,
         site: str = "siteA",
         version: str = "v0.2",
-        models_type: str = "traditional",
         training_mode: str = "single",
     ):
         """
@@ -578,12 +479,11 @@ class FlexTrackPipeline:
         Args:
             site: Site to train on (for single mode)
             version: Data version
-            models_type: 'traditional', 'deep-learning', or 'all'
             training_mode: 'single', 'site-specific', 'merged', or 'all'
         """
         print("\n" + "=" * 80)
         print("FLEXTRACK CHALLENGE - COMPLETE PIPELINE")
-        print(f"Training Mode: {training_mode}, Models: {models_type}")
+        print(f"Training Mode: {training_mode}")
         print("=" * 80)
 
         sites = ["siteA", "siteB", "siteC"]
@@ -599,29 +499,20 @@ class FlexTrackPipeline:
                 X_val,
                 y_val_class,
                 y_val_reg,
-                models_type=models_type,
             )
             self.evaluate_and_compare()
             self.save_results(site=site)
 
         elif training_mode == "site-specific":
-            self.run_site_specific_training(
-                sites=sites, version=version, models_type=models_type
-            )
+            self.run_site_specific_training(sites=sites, version=version)
 
         elif training_mode == "merged":
-            self.run_merged_training(
-                sites=sites, version=version, models_type=models_type
-            )
+            self.run_merged_training(sites=sites, version=version)
 
         elif training_mode == "all":
             print("\n" + "=" * 80 + "\nCOMPREHENSIVE TRAINING\n" + "=" * 80)
-            self.run_site_specific_training(
-                sites=sites, version=version, models_type=models_type
-            )
-            self.run_merged_training(
-                sites=sites, version=version, models_type=models_type
-            )
+            self.run_site_specific_training(sites=sites, version=version)
+            self.run_merged_training(sites=sites, version=version)
             print(f"\n✓ Trained {len(sites)} site-specific + 1 merged model")
             print(f"✓ Results: results/, Models: models/")
 
@@ -655,31 +546,6 @@ def main():
         help="Output directory (default: ../results)",
     )
     parser.add_argument(
-        "--models-type",
-        type=str,
-        default="traditional",
-        choices=["traditional", "deep-learning", "all"],
-        help="Type of models to train (default: traditional)",
-    )
-    parser.add_argument(
-        "--sequence-length",
-        type=int,
-        default=96,
-        help="Sequence length for deep learning models (default: 96)",
-    )
-    parser.add_argument(
-        "--dl-epochs",
-        type=int,
-        default=50,
-        help="Training epochs for deep learning (default: 50)",
-    )
-    parser.add_argument(
-        "--dl-batch-size",
-        type=int,
-        default=64,
-        help="Batch size for deep learning (default: 64)",
-    )
-    parser.add_argument(
         "--training-mode",
         type=str,
         default="single",
@@ -693,15 +559,11 @@ def main():
     pipeline = FlexTrackPipeline(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
-        sequence_length=args.sequence_length,
-        dl_epochs=args.dl_epochs,
-        dl_batch_size=args.dl_batch_size,
     )
 
     pipeline.run_full_pipeline(
         site=args.site,
         version=args.version,
-        models_type=args.models_type,
         training_mode=args.training_mode,
     )
 
