@@ -32,17 +32,18 @@ class XGBoostModel:
         if params is None:
             if task == "classification":
                 self.params = {
-                    "objective": "multi:softmax",
+                    "objective": "multi:softprob",  # Changed from softmax to softprob for probability outputs
                     "num_class": 3,
-                    "max_depth": 6,
-                    "learning_rate": 0.1,
-                    "n_estimators": 200,
-                    "subsample": 0.8,
-                    "colsample_bytree": 0.8,
-                    "reg_alpha": 0.1,
-                    "reg_lambda": 1.0,
-                    "min_child_weight": 3,
-                    "gamma": 0.1,
+                    "max_depth": 3,  # Reduced from 6 to 3 to fight overfitting
+                    "learning_rate": 0.01,  # Reduced from 0.1 to 0.01 for better generalization
+                    "n_estimators": 500,  # Increased from 200 to compensate for lower learning rate
+                    "subsample": 0.7,  # Reduced from 0.8 for more regularization
+                    "colsample_bytree": 0.7,  # Reduced from 0.8 for more regularization
+                    "reg_alpha": 1.0,  # Increased L1 regularization from 0.1 to 1.0
+                    "reg_lambda": 5.0,  # Increased L2 regularization from 1.0 to 5.0
+                    "min_child_weight": 5,  # Increased from 3 to 5 to prevent overfitting
+                    "gamma": 0.3,  # Increased from 0.1 for more conservative splits
+                    "max_delta_step": 5,  # NEW: Helps with imbalanced classes (range 1-10)
                     "random_state": 42,
                     "n_jobs": -1,
                     "tree_method": "hist",
@@ -97,9 +98,15 @@ class XGBoostModel:
             y_train_adjusted = y_train + 1  # Convert to 0, 1, 2
             if y_val is not None:
                 y_val_adjusted = y_val + 1
+
+            # Compute sample weights for class imbalance
+            from sklearn.utils.class_weight import compute_sample_weight
+            sample_weights = compute_sample_weight('balanced', y_train_adjusted)
+            print(f"Applied balanced sample weights for class imbalance")
         else:
             y_train_adjusted = y_train
             y_val_adjusted = y_val if y_val is not None else None
+            sample_weights = None
 
         if self.task == "classification":
             self.model = xgb.XGBClassifier(**self.params)
@@ -111,18 +118,24 @@ class XGBoostModel:
             print(f"Validation samples: {len(X_val)}")
             print(f"Early stopping rounds: {self.params.get('early_stopping_rounds', 50)}")
             eval_set = [(X_train, y_train_adjusted), (X_val, y_val_adjusted)]
-            self.model.fit(
-                X_train,
-                y_train_adjusted,
-                eval_set=eval_set,
-                verbose=False
-            )
+
+            fit_params = {
+                'eval_set': eval_set,
+                'verbose': False
+            }
+            if sample_weights is not None:
+                fit_params['sample_weight'] = sample_weights
+
+            self.model.fit(X_train, y_train_adjusted, **fit_params)
             if hasattr(self.model, 'best_iteration'):
                 print(f"Best iteration: {self.model.best_iteration}")
             if hasattr(self.model, 'best_score'):
                 print(f"Best score: {self.model.best_score:.4f}")
         else:
-            self.model.fit(X_train, y_train_adjusted, verbose=False)
+            if sample_weights is not None:
+                self.model.fit(X_train, y_train_adjusted, sample_weight=sample_weights, verbose=False)
+            else:
+                self.model.fit(X_train, y_train_adjusted, verbose=False)
 
         print(f"Training completed!")
 
