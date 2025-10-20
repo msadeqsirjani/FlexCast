@@ -10,8 +10,10 @@ from sklearn.model_selection import cross_val_score
 from typing import Dict, Tuple, Optional
 import joblib
 import warnings
+import logging
 
 warnings.filterwarnings("ignore")
+logger = logging.getLogger(__name__)
 
 
 class LightGBMModel:
@@ -36,15 +38,18 @@ class LightGBMModel:
                     "num_class": 3,
                     "metric": "multi_logloss",
                     "boosting_type": "gbdt",
-                    "num_leaves": 31,
-                    "learning_rate": 0.05,
-                    "n_estimators": 200,
-                    "feature_fraction": 0.8,
-                    "bagging_fraction": 0.8,
+                    "num_leaves": 15,  # Reduced from 31 to 15 - simpler trees
+                    "max_depth": 3,  # Added depth constraint - prevent overfitting
+                    "learning_rate": 0.01,  # Reduced from 0.05 to 0.01
+                    "n_estimators": 500,  # Increased from 200 to compensate for lower LR
+                    "feature_fraction": 0.7,  # Reduced from 0.8 for more regularization
+                    "bagging_fraction": 0.7,  # Reduced from 0.8
                     "bagging_freq": 5,
-                    "min_child_samples": 20,
-                    "reg_alpha": 0.1,
-                    "reg_lambda": 1.0,
+                    "min_child_samples": 50,  # Increased from 20 to 50 - more conservative
+                    "min_child_weight": 5,  # Added for additional regularization
+                    "reg_alpha": 1.0,  # Increased L1 from 0.1 to 1.0
+                    "reg_lambda": 5.0,  # Increased L2 from 1.0 to 5.0
+                    "max_bin": 128,  # Reduced from default 255 to 128
                     "random_state": 42,
                     "n_jobs": -1,
                     "verbose": -1,
@@ -92,8 +97,7 @@ class LightGBMModel:
         Returns:
             Self
         """
-        print(f"\nTraining LightGBM {self.task} model...")
-        print(f"Training samples: {len(X_train)}")
+        logger.info(f"Training LightGBM {self.task} model with {len(X_train)} samples")
 
         # Adjust target for classification (-1, 0, 1) -> (0, 1, 2)
         if self.task == "classification":
@@ -112,8 +116,7 @@ class LightGBMModel:
         # Training with or without validation
         callbacks = []
         if X_val is not None and y_val is not None:
-            print(f"Validation samples: {len(X_val)}")
-            print(f"Early stopping rounds: {early_stopping_rounds}")
+            logger.debug(f"Validation: {len(X_val)} samples, early stopping: {early_stopping_rounds} rounds")
             callbacks.append(
                 lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=False)
             )
@@ -123,11 +126,11 @@ class LightGBMModel:
                 eval_set=[(X_val, y_val_adjusted)],
                 callbacks=callbacks,
             )
-            print(f"Best iteration: {self.model.best_iteration_}")
+            logger.debug(f"Best iteration: {self.model.best_iteration_}")
         else:
             self.model.fit(X_train, y_train_adjusted)
 
-        print(f"Training completed!")
+        logger.debug("Training completed")
 
         return self
 
@@ -208,7 +211,7 @@ class LightGBMModel:
         joblib.dump(
             {"model": self.model, "task": self.task, "params": self.params}, filepath
         )
-        print(f"Model saved to {filepath}")
+        logger.debug(f"Model saved to {filepath}")
 
     def load_model(self, filepath: str):
         """
@@ -221,7 +224,7 @@ class LightGBMModel:
         self.model = data["model"]
         self.task = data["task"]
         self.params = data["params"]
-        print(f"Model loaded from {filepath}")
+        logger.debug(f"Model loaded from {filepath}")
 
     def cross_validate(
         self, X: pd.DataFrame, y: pd.Series, cv: int = 5, scoring: str = "f1_macro"
