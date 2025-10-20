@@ -8,8 +8,12 @@ import numpy as np
 from pathlib import Path
 from typing import Tuple, Optional
 import warnings
+import logging
 
 warnings.filterwarnings("ignore")
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 class DataLoader:
@@ -26,6 +30,27 @@ class DataLoader:
         self.training_data = None
         self.test_data = None
 
+    def _normalize_version(self, version: str) -> str:
+        """Normalize version identifiers to expected file naming."""
+        if not version:
+            return "v0.2"
+
+        version = version.strip().lower()
+
+        if version.startswith("v"):
+            core = version[1:]
+        else:
+            core = version
+
+        if "." in core:
+            normalized = f"v{core}" if not version.startswith("v") else version
+        else:
+            # handle strings like '02', '2'
+            digits = core.lstrip("0") or "0"
+            normalized = f"v0.{digits}"
+
+        return normalized
+
     def load_training_data(self, version: str = "v0.2") -> pd.DataFrame:
         """
         Load training data
@@ -36,13 +61,14 @@ class DataLoader:
         Returns:
             DataFrame with training data
         """
-        pattern = f"*flextrack-2025-training-data-{version}.csv"
+        normalized_version = self._normalize_version(version)
+        pattern = f"*flextrack-2025-training-data-{normalized_version}.csv"
         files = list(self.data_dir.glob(pattern))
 
         if not files:
             raise FileNotFoundError(f"No training data found matching {pattern}")
 
-        print(f"Loading training data: {files[0].name}")
+        logger.info(f"Loading training data: {files[0].name}")
         self.training_data = pd.read_csv(files[0])
 
         # Parse timestamp
@@ -50,11 +76,8 @@ class DataLoader:
             self.training_data["Timestamp_Local"]
         )
 
-        print(f"Loaded {len(self.training_data)} training samples")
-        print(f"Sites: {self.training_data['Site'].unique()}")
-        print(
-            f"Date range: {self.training_data['Timestamp_Local'].min()} to {self.training_data['Timestamp_Local'].max()}"
-        )
+        sites_str = ", ".join(self.training_data['Site'].unique())
+        logger.info(f"Loaded {len(self.training_data)} samples from sites: {sites_str}")
 
         return self.training_data
 
@@ -68,13 +91,14 @@ class DataLoader:
         Returns:
             DataFrame with test data
         """
-        pattern = f"*flextrack-2025-public-test-data-{version}.csv"
+        normalized_version = self._normalize_version(version)
+        pattern = f"*flextrack-2025-public-test-data-{normalized_version}.csv"
         files = list(self.data_dir.glob(pattern))
 
         if not files:
             raise FileNotFoundError(f"No test data found matching {pattern}")
 
-        print(f"Loading test data: {files[0].name}")
+        logger.info(f"Loading test data: {files[0].name}")
         self.test_data = pd.read_csv(files[0])
 
         # Parse timestamp
@@ -82,7 +106,7 @@ class DataLoader:
             self.test_data["Timestamp_Local"]
         )
 
-        print(f"Loaded {len(self.test_data)} test samples")
+        logger.info(f"Loaded {len(self.test_data)} test samples")
 
         return self.test_data
 
@@ -106,7 +130,7 @@ class DataLoader:
             raise ValueError("No data loaded. Call load_training_data() first.")
 
         site_data = data[data["Site"] == site].copy()
-        print(f"Site {site}: {len(site_data)} samples")
+        logger.info(f"Site {site}: {len(site_data)} samples")
 
         return site_data
 
@@ -138,8 +162,7 @@ class DataLoader:
                 data, test_size=validation_size, random_state=42
             )
 
-        print(f"Train samples: {len(train_df)}")
-        print(f"Validation samples: {len(val_df)}")
+        logger.info(f"Split: {len(train_df)} train, {len(val_df)} validation samples")
 
         return train_df, val_df
 
