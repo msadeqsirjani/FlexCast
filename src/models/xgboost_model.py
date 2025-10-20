@@ -10,8 +10,10 @@ from sklearn.model_selection import cross_val_score
 from typing import Dict, Tuple, Optional
 import joblib
 import warnings
+import logging
 
 warnings.filterwarnings("ignore")
+logger = logging.getLogger(__name__)
 
 
 class XGBoostModel:
@@ -90,8 +92,7 @@ class XGBoostModel:
         Returns:
             Self
         """
-        print(f"\nTraining XGBoost {self.task} model...")
-        print(f"Training samples: {len(X_train)}")
+        logger.info(f"Training XGBoost {self.task} model with {len(X_train)} samples")
 
         # Adjust target for classification (-1, 0, 1) -> (0, 1, 2)
         if self.task == "classification":
@@ -102,7 +103,7 @@ class XGBoostModel:
             # Compute sample weights for class imbalance
             from sklearn.utils.class_weight import compute_sample_weight
             sample_weights = compute_sample_weight('balanced', y_train_adjusted)
-            print(f"Applied balanced sample weights for class imbalance")
+            logger.debug("Applied balanced sample weights for class imbalance")
         else:
             y_train_adjusted = y_train
             y_val_adjusted = y_val if y_val is not None else None
@@ -115,8 +116,7 @@ class XGBoostModel:
 
         # Training with or without validation
         if X_val is not None and y_val is not None:
-            print(f"Validation samples: {len(X_val)}")
-            print(f"Early stopping rounds: {self.params.get('early_stopping_rounds', 50)}")
+            logger.debug(f"Validation: {len(X_val)} samples, early stopping: {self.params.get('early_stopping_rounds', 50)} rounds")
             eval_set = [(X_train, y_train_adjusted), (X_val, y_val_adjusted)]
 
             fit_params = {
@@ -128,16 +128,16 @@ class XGBoostModel:
 
             self.model.fit(X_train, y_train_adjusted, **fit_params)
             if hasattr(self.model, 'best_iteration'):
-                print(f"Best iteration: {self.model.best_iteration}")
+                logger.debug(f"Best iteration: {self.model.best_iteration}")
             if hasattr(self.model, 'best_score'):
-                print(f"Best score: {self.model.best_score:.4f}")
+                logger.debug(f"Best score: {self.model.best_score:.4f}")
         else:
             if sample_weights is not None:
                 self.model.fit(X_train, y_train_adjusted, sample_weight=sample_weights, verbose=False)
             else:
                 self.model.fit(X_train, y_train_adjusted, verbose=False)
 
-        print(f"Training completed!")
+        logger.debug("Training completed")
 
         return self
 
@@ -218,7 +218,7 @@ class XGBoostModel:
         joblib.dump(
             {"model": self.model, "task": self.task, "params": self.params}, filepath
         )
-        print(f"Model saved to {filepath}")
+        logger.debug(f"Model saved to {filepath}")
 
     def load_model(self, filepath: str):
         """
@@ -231,7 +231,7 @@ class XGBoostModel:
         self.model = data["model"]
         self.task = data["task"]
         self.params = data["params"]
-        print(f"Model loaded from {filepath}")
+        logger.debug(f"Model loaded from {filepath}")
 
     def cross_validate(
         self, X: pd.DataFrame, y: pd.Series, cv: int = 5, scoring: str = "f1_macro"
