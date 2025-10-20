@@ -19,8 +19,10 @@ from sklearn.model_selection import cross_val_score
 from typing import Dict, Tuple, Optional
 import joblib
 import warnings
+import logging
 
 warnings.filterwarnings("ignore")
+logger = logging.getLogger(__name__)
 
 
 class HistGradientBoostingModel:
@@ -53,15 +55,15 @@ class HistGradientBoostingModel:
 
         # Default parameters
         if params is None:
-            # Common parameters for both tasks
+            # Common parameters for both tasks - HEAVILY REGULARIZED
             base_params = {
-                "max_iter": 200,
-                "learning_rate": 0.1,
-                "max_depth": None,  # No limit
-                "max_leaf_nodes": 31,
-                "min_samples_leaf": 20,
-                "l2_regularization": 0.1,
-                "max_bins": 255,
+                "max_iter": 300,  # Increased from 200 to compensate for lower LR
+                "learning_rate": 0.01,  # Reduced from 0.1 to 0.01 - fight overfitting!
+                "max_depth": 3,  # Added depth limit (was None) - prevent deep trees
+                "max_leaf_nodes": 15,  # Reduced from 31 to 15 - simpler trees
+                "min_samples_leaf": 50,  # Increased from 20 to 50 - more conservative splits
+                "l2_regularization": 1.0,  # Increased from 0.1 to 1.0 - stronger L2
+                "max_bins": 128,  # Reduced from 255 to 128 - less granular splits
                 "random_state": 42,
                 "verbose": 0,
                 "early_stopping": True,
@@ -106,14 +108,8 @@ class HistGradientBoostingModel:
         Returns:
             Self
         """
-        print(f"\nTraining HistGradientBoosting {self.task} model...")
-        print(
-            f"Using {'HistGradientBoostingClassifier' if self.task == 'classification' else 'HistGradientBoostingRegressor'}"
-        )
-        print(f"Training samples: {len(X_train)}")
-        if X_val is not None:
-            print(f"Validation samples: {len(X_val)}")
-        print(f"Early stopping rounds (n_iter_no_change): {early_stopping_rounds}")
+        model_type = 'HistGradientBoostingClassifier' if self.task == 'classification' else 'HistGradientBoostingRegressor'
+        logger.info(f"Training {model_type} with {len(X_train)} samples")
 
         # Update early stopping parameter
         params_copy = self.params.copy()
@@ -149,8 +145,7 @@ class HistGradientBoostingModel:
         else:
             self.model.fit(X_train, y_train_adjusted)
 
-        print(f"Training completed!")
-        print(f"Number of iterations: {self.model.n_iter_}")
+        logger.debug(f"Training completed in {self.model.n_iter_} iterations")
 
         return self
 
@@ -217,9 +212,7 @@ class HistGradientBoostingModel:
 
         # Check if feature importances are available
         if not hasattr(self.model, "feature_importances_"):
-            print(
-                "Warning: HistGradientBoosting doesn't provide feature importances by default."
-            )
+            logger.warning("HistGradientBoosting doesn't provide feature importances by default.")
             return None
 
         importance = self.model.feature_importances_
@@ -244,7 +237,7 @@ class HistGradientBoostingModel:
         joblib.dump(
             {"model": self.model, "task": self.task, "params": self.params}, filepath
         )
-        print(f"Model saved to {filepath}")
+        logger.debug(f"Model saved to {filepath}")
 
     def load_model(self, filepath: str):
         """
