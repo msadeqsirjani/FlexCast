@@ -8,6 +8,9 @@ import pandas as pd
 from imblearn.metrics import geometric_mean_score
 from sklearn.metrics import (
     f1_score,
+    precision_score,
+    recall_score,
+    accuracy_score,
     mean_absolute_error,
     root_mean_squared_error,
     classification_report,
@@ -32,9 +35,13 @@ class Evaluator:
         """
         Evaluate classification performance
 
-        Metrics:
-        - F1 Score (macro average)
+        Comprehensive Metrics:
+        - Accuracy
+        - F1 Score (macro, micro, weighted, per-class)
+        - Precision (macro, micro, weighted, per-class)
+        - Recall (macro, micro, weighted, per-class)
         - Geometric Mean Score (macro average)
+        - Confusion Matrix
 
         Args:
             y_true: True labels
@@ -44,20 +51,61 @@ class Evaluator:
         Returns:
             Dictionary with evaluation metrics
         """
-        # Calculate primary metrics
-        f1 = f1_score(y_true, y_pred, average="macro")
+        labels = [-1, 0, 1]
+
+        # Accuracy
+        accuracy = accuracy_score(y_true, y_pred)
+
+        # F1 Scores
+        f1_macro = f1_score(y_true, y_pred, average="macro", labels=labels)
+        f1_micro = f1_score(y_true, y_pred, average="micro", labels=labels)
+        f1_weighted = f1_score(y_true, y_pred, average="weighted", labels=labels)
+
+        # Precision
+        precision_macro = precision_score(y_true, y_pred, average="macro", labels=labels, zero_division=0)
+        precision_micro = precision_score(y_true, y_pred, average="micro", labels=labels, zero_division=0)
+        precision_weighted = precision_score(y_true, y_pred, average="weighted", labels=labels, zero_division=0)
+
+        # Recall
+        recall_macro = recall_score(y_true, y_pred, average="macro", labels=labels, zero_division=0)
+        recall_micro = recall_score(y_true, y_pred, average="micro", labels=labels, zero_division=0)
+        recall_weighted = recall_score(y_true, y_pred, average="weighted", labels=labels, zero_division=0)
+
+        # Geometric Mean
         gm_score = geometric_mean_score(y_true, y_pred, average="macro")
 
-        results = {"f1_score_macro": f1, "geometric_mean_score": gm_score}
+        results = {
+            "accuracy": accuracy,
+            "f1_score_macro": f1_macro,
+            "f1_score_micro": f1_micro,
+            "f1_score_weighted": f1_weighted,
+            "precision_macro": precision_macro,
+            "precision_micro": precision_micro,
+            "precision_weighted": precision_weighted,
+            "recall_macro": recall_macro,
+            "recall_micro": recall_micro,
+            "recall_weighted": recall_weighted,
+            "geometric_mean_score": gm_score,
+        }
 
         if detailed:
             # Per-class F1 scores
-            f1_per_class = f1_score(y_true, y_pred, average=None)
-            for i, class_label in enumerate([-1, 0, 1]):
+            f1_per_class = f1_score(y_true, y_pred, average=None, labels=labels)
+            for i, class_label in enumerate(labels):
                 results[f"f1_score_class_{class_label}"] = f1_per_class[i]
 
+            # Per-class Precision
+            precision_per_class = precision_score(y_true, y_pred, average=None, labels=labels, zero_division=0)
+            for i, class_label in enumerate(labels):
+                results[f"precision_class_{class_label}"] = precision_per_class[i]
+
+            # Per-class Recall
+            recall_per_class = recall_score(y_true, y_pred, average=None, labels=labels, zero_division=0)
+            for i, class_label in enumerate(labels):
+                results[f"recall_class_{class_label}"] = recall_per_class[i]
+
             # Confusion matrix
-            cm = confusion_matrix(y_true, y_pred, labels=[-1, 0, 1])
+            cm = confusion_matrix(y_true, y_pred, labels=labels)
             results["confusion_matrix"] = cm
 
         return results
