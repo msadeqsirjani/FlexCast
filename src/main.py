@@ -41,9 +41,9 @@ from typing import List, Optional, Union
 
 warnings.filterwarnings("ignore")
 
-# Configure logging
+# Configure logging (WARNING level to reduce verbosity)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%H:%M:%S'
 )
@@ -67,7 +67,6 @@ from models.xgboost_model import XGBoostModel
 from models.lightgbm_model import LightGBMModel
 from models.catboost_model import CatBoostModel
 from models.histgb_model import HistGradientBoostingModel
-from threshold_optimizer import ThresholdOptimizer
 from cascade_classifier import CascadeClassifier
 
 # For handling class imbalance
@@ -413,7 +412,7 @@ class FlexTrackPipeline:
                 weight_dict_adjusted = None
 
             for model_name, ModelClass in model_classes.items():
-                logger.info(f"Training {model_name} ({task})")
+                print(f"Training {model_name} ({task})...")
 
                 try:
                     # Create model with appropriate parameters
@@ -439,32 +438,19 @@ class FlexTrackPipeline:
                     if task == "classification":
                         # Use threshold optimization for better F1 scores
 
-                        # Get probability predictions
-                        train_proba = model.predict_proba(X_train)
-                        val_proba = model.predict_proba(X_val)
+                        # Get predictions
+                        train_pred = model.predict(X_train)
+                        val_pred = model.predict(X_val)
 
-                        # Optimize thresholds on validation set
-                        optimizer = ThresholdOptimizer(classes=[-1, 0, 1])
-                        opt_results = optimizer.optimize_thresholds(
-                            y_val.values, val_proba, metric='f1_macro'
-                        )
-
-                        # Store optimizer with model
-                        self.models[key + "_optimizer"] = optimizer
-
-                        # Get optimized predictions
-                        train_pred_opt = optimizer.predict(train_proba)
-                        val_pred_opt = opt_results['predictions']
-
-                        # Evaluate with optimized predictions
+                        # Evaluate with predictions
                         train_results = self.evaluator.evaluate_classification(
-                            y_train, train_pred_opt, detailed=False
+                            y_train, train_pred, detailed=False
                         )
                         val_results = self.evaluator.evaluate_classification(
-                            y_val, val_pred_opt, detailed=True
+                            y_val, val_pred, detailed=True
                         )
 
-                        logger.info(f"{model_name} Results: Train F1={train_results['f1_score_macro']:.4f}, Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
+                        print(f"  {model_name}: Train F1={train_results['f1_score_macro']:.4f}, Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
                     else:
                         # Regression: use regular predictions
                         train_pred = model.predict(X_train)
@@ -478,7 +464,7 @@ class FlexTrackPipeline:
                         )
 
                         cv_rmse_str = f", CV-RMSE={val_results['cv_rmse']:.4f}" if 'cv_rmse' in val_results else ""
-                        logger.info(f"{model_name} Results: Train MAE={train_results['mae']:.4f}, Val MAE={val_results['mae']:.4f}, Val RMSE={val_results['rmse']:.4f}{cv_rmse_str}")
+                        print(f"  {model_name}: Train MAE={train_results['mae']:.4f}, Val MAE={val_results['mae']:.4f}, Val RMSE={val_results['rmse']:.4f}{cv_rmse_str}")
 
                     # Store results
                     self.results[key] = {
@@ -493,7 +479,7 @@ class FlexTrackPipeline:
 
             # Create Ensemble if enabled (only for classification)
             if task == "classification" and self.use_ensemble:
-                logger.info("Creating Ensemble Model (Weighted Voting)")
+                print("\nCreating Ensemble Model (Weighted Voting)...")
 
                 try:
                     # Get probabilities from all trained models
@@ -516,24 +502,19 @@ class FlexTrackPipeline:
                         weights = np.array(model_f1s) / sum(model_f1s)
                         ensemble_proba = np.average(model_probas, axis=0, weights=weights)
 
-                        # Optimize thresholds for ensemble
-                        optimizer = ThresholdOptimizer(classes=[-1, 0, 1])
-                        opt_results = optimizer.optimize_thresholds(
-                            y_val.values, ensemble_proba, metric='f1_macro'
-                        )
-                        val_pred_opt = opt_results['predictions']
+                        # Get predictions from ensemble
+                        val_pred = np.argmax(ensemble_proba, axis=1) - 1  # Convert 0,1,2 back to -1,0,1
 
                         # Evaluate ensemble
                         val_results = self.evaluator.evaluate_classification(
-                            y_val, val_pred_opt, detailed=True
+                            y_val, val_pred, detailed=True
                         )
 
                         # Create ensemble wrapper
                         class EnsembleModel:
-                            def __init__(self, models, weights, optimizer):
+                            def __init__(self, models, weights):
                                 self.models = models
                                 self.weights = weights
-                                self.optimizer = optimizer
 
                             def predict_proba(self, X):
                                 probas = [m.predict_proba(X) for m in self.models]
@@ -541,31 +522,29 @@ class FlexTrackPipeline:
 
                             def predict(self, X):
                                 proba = self.predict_proba(X)
-                                return self.optimizer.predict(proba)
+                                return np.argmax(proba, axis=1) - 1  # Convert 0,1,2 to -1,0,1
 
                             def save_model(self, filepath):
                                 """Save ensemble - note: saves metadata only, base models saved separately"""
                                 import joblib
                                 joblib.dump({
                                     'weights': self.weights,
-                                    'optimizer': self.optimizer,
                                     'model_names': ['XGBoost', 'LightGBM', 'CatBoost']
                                 }, filepath)
                                 logger.debug(f"Ensemble metadata saved to {filepath}")
 
                         ensemble_models = [self.models[f"{name}_{task}"] for name in ["XGBoost", "LightGBM", "CatBoost"] if f"{name}_{task}" in self.models]
-                        ensemble = EnsembleModel(ensemble_models, weights, optimizer)
+                        ensemble = EnsembleModel(ensemble_models, weights)
 
                         key = "Ensemble_classification"
                         self.models[key] = ensemble
-                        self.models[key + "_optimizer"] = optimizer
                         self.results[key] = {
                             "train": {},
                             "validation": val_results,
                         }
 
-                        logger.info(f"Ensemble Results: Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
-                        logger.info(f"Ensemble weights: XGB={weights[0]:.3f}, LGB={weights[1]:.3f}, CAT={weights[2]:.3f}")
+                        print(f"  Ensemble: Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
+                        print(f"  Weights: XGB={weights[0]:.3f}, LGB={weights[1]:.3f}, CAT={weights[2]:.3f}")
 
                 except Exception as e:
                     logger.error(f"Error creating ensemble: {str(e)}")
@@ -574,7 +553,7 @@ class FlexTrackPipeline:
 
             # Add Cascade Classifier (two-stage hierarchical)
             if task == "classification":
-                logger.info("Training CASCADE Classifier (Hierarchical)")
+                print("\nTraining CASCADE Classifier (Hierarchical)...")
 
                 try:
                     # Create cascade with best performing models
@@ -587,29 +566,21 @@ class FlexTrackPipeline:
                     cascade.train(X_train_balanced, y_train_balanced, X_val, y_val)
 
                     # Get predictions
-                    val_proba = cascade.predict_proba(X_val)
-
-                    # Optimize thresholds
-                    optimizer = ThresholdOptimizer(classes=[-1, 0, 1])
-                    opt_results = optimizer.optimize_thresholds(
-                        y_val.values, val_proba, metric='f1_macro'
-                    )
-                    val_pred_opt = opt_results['predictions']
+                    val_pred = cascade.predict(X_val)
 
                     # Evaluate
                     val_results = self.evaluator.evaluate_classification(
-                        y_val, val_pred_opt, detailed=True
+                        y_val, val_pred, detailed=True
                     )
 
                     key = "Cascade_classification"
                     self.models[key] = cascade
-                    self.models[key + "_optimizer"] = optimizer
                     self.results[key] = {
                         "train": {},
                         "validation": val_results,
                     }
 
-                    logger.info(f"Cascade Results: Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
+                    print(f"  Cascade: Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
 
                 except Exception as e:
                     logger.error(f"Error training cascade: {str(e)}")
@@ -618,7 +589,9 @@ class FlexTrackPipeline:
 
     def evaluate_and_compare(self):
         """Evaluate and compare all models"""
-        logger.info("Model comparison results")
+        print("\n" + "="*50)
+        print("MODEL COMPARISON")
+        print("="*50)
 
         if "classification" in self.tasks:
             class_results = {
@@ -631,7 +604,8 @@ class FlexTrackPipeline:
                 comparison_df = self.evaluator.compare_models(
                     class_results, task="classification"
                 )
-                logger.info("\n--- CLASSIFICATION MODELS ---\n" + comparison_df.to_string(index=False))
+                print("\nCLASSIFICATION MODELS:")
+                print(comparison_df.to_string(index=False))
             else:
                 logger.warning("No classification models trained.")
 
@@ -646,13 +620,14 @@ class FlexTrackPipeline:
                 comparison_df = self.evaluator.compare_models(
                     reg_results, task="regression"
                 )
-                logger.info("\n--- REGRESSION MODELS ---\n" + comparison_df.to_string(index=False))
+                print("\nREGRESSION MODELS:")
+                print(comparison_df.to_string(index=False))
             else:
                 logger.warning("No regression models trained.")
 
     def save_results(self, site: str = "siteA", subfolder: str = None):
         """Save all results"""
-        logger.info("Saving results")
+        print("\nSaving results...")
 
         # Save results JSON
         results_path = self.output_dir / f"results_{site}.json"
@@ -682,8 +657,8 @@ class FlexTrackPipeline:
                 model_path = models_dir / f"{name}_{site}.pkl"
                 model.save_model(str(model_path))
 
-        logger.info(f"Results saved to: {results_path}")
-        logger.info(f"Models saved to: {models_dir}")
+        print(f"  Results: {results_path}")
+        print(f"  Models: {models_dir}")
 
     def _get_summary_task_mode(self) -> str:
         if "classification" in self.tasks and "regression" in self.tasks:
