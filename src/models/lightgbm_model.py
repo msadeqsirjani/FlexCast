@@ -38,22 +38,24 @@ class LightGBMModel:
                     "num_class": 3,
                     "metric": "multi_logloss",
                     "boosting_type": "gbdt",
-                    "num_leaves": 15,  # Reduced from 31 to 15 - simpler trees
-                    "max_depth": 3,  # Added depth constraint - prevent overfitting
-                    "learning_rate": 0.01,  # Reduced from 0.05 to 0.01
-                    "n_estimators": 500,  # Increased from 200 to compensate for lower LR
-                    "feature_fraction": 0.7,  # Reduced from 0.8 for more regularization
-                    "bagging_fraction": 0.7,  # Reduced from 0.8
+                    "num_leaves": 63,  # Optimal for complex patterns
+                    "max_depth": 7,  # Balanced depth for learning
+                    "learning_rate": 0.05,  # Optimal learning rate
+                    "n_estimators": 1000,  # More trees with early stopping
+                    "feature_fraction": 0.8,  # Good feature sampling
+                    "bagging_fraction": 0.8,  # Good row sampling
                     "bagging_freq": 5,
-                    "min_child_samples": 50,  # Increased from 20 to 50 - more conservative
-                    "min_child_weight": 5,  # Added for additional regularization
-                    "reg_alpha": 1.0,  # Increased L1 from 0.1 to 1.0
-                    "reg_lambda": 5.0,  # Increased L2 from 1.0 to 5.0
-                    "max_bin": 128,  # Reduced from default 255 to 128
+                    "min_child_samples": 20,  # Balanced split requirement
+                    "min_child_weight": 0.001,  # Allow learning from minority classes
+                    "reg_alpha": 0.0,  # Remove L1 regularization
+                    "reg_lambda": 0.1,  # Minimal L2 regularization
+                    "max_bin": 255,  # Full precision
                     "random_state": 42,
                     "n_jobs": -1,
                     "verbose": -1,
                     "class_weight": "balanced",  # Handle class imbalance automatically
+                    "min_split_gain": 0.0,  # Allow all beneficial splits
+                    "subsample_for_bin": 200000,  # Better binning
                 }
             else:  # regression
                 self.params = {
