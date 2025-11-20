@@ -34,18 +34,19 @@ class XGBoostModel:
         if params is None:
             if task == "classification":
                 self.params = {
-                    "objective": "multi:softprob",  # Changed from softmax to softprob for probability outputs
+                    "objective": "multi:softprob",  # Probability outputs
                     "num_class": 3,
-                    "max_depth": 3,  # Reduced from 6 to 3 to fight overfitting
-                    "learning_rate": 0.01,  # Reduced from 0.1 to 0.01 for better generalization
-                    "n_estimators": 500,  # Increased from 200 to compensate for lower learning rate
-                    "subsample": 0.7,  # Reduced from 0.8 for more regularization
-                    "colsample_bytree": 0.7,  # Reduced from 0.8 for more regularization
-                    "reg_alpha": 1.0,  # Increased L1 regularization from 0.1 to 1.0
-                    "reg_lambda": 5.0,  # Increased L2 regularization from 1.0 to 5.0
-                    "min_child_weight": 5,  # Increased from 3 to 5 to prevent overfitting
-                    "gamma": 0.3,  # Increased from 0.1 for more conservative splits
-                    "max_delta_step": 5,  # NEW: Helps with imbalanced classes (range 1-10)
+                    "max_depth": 6,  # Optimal depth for learning patterns
+                    "learning_rate": 0.05,  # Balanced learning rate
+                    "n_estimators": 1000,  # More trees with early stopping
+                    "subsample": 0.8,  # Good row sampling
+                    "colsample_bytree": 0.8,  # Good column sampling
+                    "reg_alpha": 0.0,  # Remove L1 regularization
+                    "reg_lambda": 0.1,  # Minimal L2 regularization
+                    "min_child_weight": 1,  # Allow learning from minority classes
+                    "gamma": 0.0,  # Allow all beneficial splits
+                    "max_delta_step": 1,  # Conservative for stability
+                    "scale_pos_weight": None,  # Will use sample_weight instead
                     "random_state": 42,
                     "n_jobs": -1,
                     "tree_method": "hist",

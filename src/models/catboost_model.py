@@ -34,20 +34,21 @@ class CatBoostModel:
         if params is None:
             if task == "classification":
                 self.params = {
-                    "iterations": 500,  # Increased from 200 to compensate for lower LR
-                    "learning_rate": 0.01,  # Reduced from 0.1 to 0.01 - fight overfitting
-                    "depth": 3,  # Reduced from 6 to 3 - simpler trees
-                    "l2_leaf_reg": 10,  # Increased from 3 to 10 - stronger L2 regularization
-                    "min_data_in_leaf": 50,  # Added - require more samples per leaf
-                    "border_count": 64,  # Reduced from 128 to 64 - less granular splits
-                    "random_strength": 2,  # Increased from 1 to 2 - more randomness
-                    "bootstrap_type": "Bernoulli",  # Required for subsample to work
-                    "subsample": 0.7,  # Use 70% of data per tree (Bernoulli bootstrap)
+                    "iterations": 1000,  # More iterations with early stopping
+                    "learning_rate": 0.05,  # Balanced learning rate
+                    "depth": 6,  # Optimal depth for complex patterns
+                    "l2_leaf_reg": 3,  # Moderate L2 regularization
+                    "min_data_in_leaf": 1,  # Allow learning from minority classes
+                    "border_count": 254,  # High precision for splits
+                    "random_strength": 1,  # Balanced randomness
+                    "bootstrap_type": "Bayesian",  # Better for small classes
+                    "bagging_temperature": 1,  # Bayesian bootstrap parameter
                     "random_seed": 42,
                     "verbose": False,
                     "thread_count": -1,
                     "task_type": "CPU",
-                    "auto_class_weights": "SqrtBalanced",  # Stronger than 'Balanced'
+                    "auto_class_weights": "Balanced",  # Automatic class balancing
+                    "leaf_estimation_iterations": 10,  # Better leaf value estimation
                 }
             else:  # regression
                 self.params = {
