@@ -62,11 +62,20 @@ class DataLoader:
             DataFrame with training data
         """
         normalized_version = self._normalize_version(version)
+        # Pattern matches files with UUID prefix: <uuid>_flextrack-2025-training-data-v0.2.csv
         pattern = f"*flextrack-2025-training-data-{normalized_version}.csv"
         files = list(self.data_dir.glob(pattern))
 
         if not files:
-            raise FileNotFoundError(f"No training data found matching {pattern}")
+            # Also try without version suffix in case files are named differently
+            pattern_alt = f"*training-data*.csv"
+            files = list(self.data_dir.glob(pattern_alt))
+            if files:
+                # Filter to get the right version
+                files = [f for f in files if normalized_version in f.name]
+
+        if not files:
+            raise FileNotFoundError(f"No training data found for version {normalized_version} in {self.data_dir}")
 
         logger.info(f"Loading training data: {files[0].name}")
         self.training_data = pd.read_csv(files[0])
