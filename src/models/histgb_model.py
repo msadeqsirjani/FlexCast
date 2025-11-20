@@ -108,9 +108,6 @@ class HistGradientBoostingModel:
         Returns:
             Self
         """
-        model_type = 'HistGradientBoostingClassifier' if self.task == 'classification' else 'HistGradientBoostingRegressor'
-        logger.info(f"Training {model_type} with {len(X_train)} samples")
-
         # Update early stopping parameter
         params_copy = self.params.copy()
         params_copy["n_iter_no_change"] = early_stopping_rounds

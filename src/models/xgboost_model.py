@@ -93,8 +93,6 @@ class XGBoostModel:
         Returns:
             Self
         """
-        logger.info(f"Training XGBoost {self.task} model with {len(X_train)} samples")
-
         # Adjust target for classification (-1, 0, 1) -> (0, 1, 2)
         if self.task == "classification":
             y_train_adjusted = y_train + 1  # Convert to 0, 1, 2
