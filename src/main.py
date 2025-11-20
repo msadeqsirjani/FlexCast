@@ -68,12 +68,15 @@ from models.lightgbm_model import LightGBMModel
 from models.catboost_model import CatBoostModel
 from models.histgb_model import HistGradientBoostingModel
 from threshold_optimizer import ThresholdOptimizer
+from cascade_classifier import CascadeClassifier
 
 # For handling class imbalance
-from imblearn.over_sampling import SMOTE, ADASYN
-from imblearn.combine import SMOTEENN
+from imblearn.over_sampling import SMOTE, ADASYN, BorderlineSMOTE, SVMSMOTE, KMeansSMOTE
+from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.ensemble import BalancedRandomForestClassifier, BalancedBaggingClassifier
 import pandas as pd
 import numpy as np
+from sklearn.utils.class_weight import compute_sample_weight
 
 
 class FlexTrackPipeline:
@@ -85,6 +88,10 @@ class FlexTrackPipeline:
         output_dir: Union[str, Path] = DEFAULT_RESULTS_DIR,
         sampler: str = "none",
         tasks: Optional[List[str]] = None,
+        use_advanced_weights: bool = True,
+        use_ensemble: bool = True,
+        feature_selection: bool = True,
+        n_features: int = 80,
     ):
         """
         Initialize pipeline
@@ -92,13 +99,23 @@ class FlexTrackPipeline:
         Args:
             data_dir: Directory containing data files
             output_dir: Directory for outputs
-            sampler: Sampling method for class imbalance ('none', 'smote', 'adasyn', 'smoteenn')
+            sampler: Sampling method for class imbalance
+                     ('none', 'smote', 'adasyn', 'smoteenn', 'borderline', 'svmsmote', 'kmeans', 'smotetomek')
             tasks: List of tasks to run ('classification', 'regression')
+            use_advanced_weights: Use dynamic class weights (effective_samples strategy)
+            use_ensemble: Add ensemble voting of top models
+            feature_selection: Enable feature selection
+            n_features: Number of top features to select
         """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True, parents=True)
         self.sampler = sampler
+        self.use_advanced_weights = use_advanced_weights
+        self.use_ensemble = use_ensemble
+        self.feature_selection = feature_selection
+        self.n_features = n_features
+
         if tasks is None:
             tasks = ["classification", "regression"]
         self.tasks = list(dict.fromkeys(tasks))
@@ -119,6 +136,7 @@ class FlexTrackPipeline:
 
         self.models = {}
         self.results = {}
+        self.selected_features = None
 
     def load_and_prepare_data(self, site: str = "siteA", version: str = "v0.2"):
         """
@@ -180,14 +198,95 @@ class FlexTrackPipeline:
             feature_names,
         )
 
-    def apply_resampling(self, X_train, y_train, method='smote'):
+    def select_top_features(self, X_train, y_train, n_features=None):
         """
-        Apply resampling to balance classes
+        Select top features using LightGBM feature importance
 
         Args:
             X_train: Training features
             y_train: Training labels
-            method: Resampling method ('smote', 'adasyn', 'smoteenn')
+            n_features: Number of features to select
+
+        Returns:
+            List of selected feature names
+        """
+        if n_features is None:
+            n_features = self.n_features
+
+        logger.info(f"Selecting top {n_features} features from {len(X_train.columns)} using LightGBM importance...")
+
+        # Train a quick LightGBM model for feature importance
+        from sklearn.ensemble import RandomForestClassifier
+        y_adjusted = y_train + 1
+
+        clf = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            min_samples_split=20,
+            random_state=42,
+            n_jobs=-1,
+            class_weight='balanced'
+        )
+        clf.fit(X_train, y_adjusted)
+
+        # Get feature importances
+        importances = pd.DataFrame({
+            'feature': X_train.columns,
+            'importance': clf.feature_importances_
+        }).sort_values('importance', ascending=False)
+
+        selected = importances.head(n_features)['feature'].tolist()
+        self.selected_features = selected
+
+        logger.info(f"Selected {len(selected)} features")
+        logger.info(f"Top 10: {selected[:10]}")
+
+        return selected
+
+    def compute_dynamic_class_weights(self, y_train, extreme_penalty: bool = False):
+        """
+        Compute dynamic class weights using effective samples strategy
+        Better for extreme class imbalance than standard balanced weights
+
+        Args:
+            y_train: Training labels
+            extreme_penalty: If True, apply 5x penalty to minority classes (disabled by default)
+
+        Returns:
+            Dictionary mapping class labels to weights
+        """
+        y_adjusted = y_train + 1  # Convert to 0, 1, 2
+        unique_classes, counts = np.unique(y_adjusted, return_counts=True)
+
+        # Effective number of samples strategy (better for extreme imbalance)
+        # From "Class-Balanced Loss Based on Effective Number of Samples" paper
+        beta = 0.9999  # Balanced beta for reasonable weights
+        effective_num = 1.0 - np.power(beta, counts)
+        weights_array = (1.0 - beta) / effective_num
+
+        # Apply moderate penalty to minority classes
+        if extreme_penalty:
+            # Find minority classes (classes with count < 10% of max)
+            max_count = counts.max()
+            minority_mask = counts < (max_count * 0.1)
+            weights_array[minority_mask] *= 5.0  # 5x penalty (reduced from 10x)
+            logger.info("Applied 5x penalty to minority classes")
+
+        # Create weight dictionary (convert back to -1, 0, 1 keys)
+        weights = {cls - 1: w for cls, w in zip(unique_classes, weights_array)}
+
+        logger.info(f"Dynamic class weights: {weights}")
+        return weights
+
+    def apply_resampling(self, X_train, y_train, method='smote'):
+        """
+        Apply advanced resampling to balance classes
+
+        Args:
+            X_train: Training features
+            y_train: Training labels
+            method: Resampling method
+                    ('smote', 'adasyn', 'smoteenn', 'borderline', 'svmsmote', 'kmeans', 'smotetomek')
 
         Returns:
             Tuple of (X_resampled, y_resampled)
@@ -205,29 +304,53 @@ class FlexTrackPipeline:
         min_samples = min(counts)
         k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
 
-        if method == 'smote':
-            sampler = SMOTE(random_state=42, k_neighbors=k_neighbors, sampling_strategy='auto')
-        elif method == 'adasyn':
-            # ADASYN: Adaptive Synthetic Sampling - generates more samples for harder-to-learn examples
-            sampler = ADASYN(random_state=42, n_neighbors=k_neighbors, sampling_strategy='auto')
-        elif method == 'smoteenn':
-            # SMOTEENN: SMOTE + Edited Nearest Neighbors - oversamples then cleans up noisy samples
-            sampler = SMOTEENN(random_state=42, smote=SMOTE(random_state=42, k_neighbors=k_neighbors))
-        else:
-            raise ValueError(f"Unknown sampling method: {method}")
+        # For extreme imbalance, use FULL BALANCING - match majority class count
+        # This is aggressive but necessary to reach F1 > 0.60
+        majority_count = counts.max()
+        sampling_strategy = {0: majority_count, 2: majority_count}  # Fully balance all classes
 
-        logger.debug(f"Using {method.upper()} with k_neighbors={k_neighbors}")
-        X_resampled, y_resampled = sampler.fit_resample(X_train, y_adjusted)
+        logger.info(f"Aggressive balancing: Target {majority_count:,} samples per class")
 
-        # Convert back to DataFrames with original column names
-        X_resampled = pd.DataFrame(X_resampled, columns=X_train.columns)
-        y_resampled = pd.Series(y_resampled - 1, name=y_train.name)  # Convert back to -1, 0, 1
+        try:
+            if method == 'smote':
+                sampler = SMOTE(random_state=42, k_neighbors=k_neighbors, sampling_strategy=sampling_strategy)
+            elif method == 'adasyn':
+                # ADASYN: Adaptive Synthetic Sampling
+                sampler = ADASYN(random_state=42, n_neighbors=k_neighbors, sampling_strategy=sampling_strategy)
+            elif method == 'smoteenn':
+                # SMOTEENN: SMOTE + Edited Nearest Neighbors
+                sampler = SMOTEENN(random_state=42, smote=SMOTE(random_state=42, k_neighbors=k_neighbors, sampling_strategy=sampling_strategy))
+            elif method == 'borderline':
+                # BorderlineSMOTE: Focuses on borderline samples (best for imbalance)
+                sampler = BorderlineSMOTE(random_state=42, k_neighbors=k_neighbors, sampling_strategy=sampling_strategy, kind='borderline-1')
+            elif method == 'svmsmote':
+                # SVMSMOTE: Uses SVM to identify borderline samples
+                sampler = SVMSMOTE(random_state=42, k_neighbors=k_neighbors, sampling_strategy=sampling_strategy)
+            elif method == 'kmeans':
+                # KMeansSMOTE: Clusters data first, then applies SMOTE
+                sampler = KMeansSMOTE(random_state=42, k_neighbors=k_neighbors, sampling_strategy=sampling_strategy, cluster_balance_threshold=0.01)
+            elif method == 'smotetomek':
+                # SMOTETomek: SMOTE + Tomek links cleaning
+                sampler = SMOTETomek(random_state=42, sampling_strategy=sampling_strategy)
+            else:
+                raise ValueError(f"Unknown sampling method: {method}")
 
-        unique_new, counts_new = np.unique(y_resampled + 1, return_counts=True)
-        dist_str_new = ", ".join([f"Class {cls-1}: {count}" for cls, count in zip(unique_new, counts_new)])
-        logger.info(f"Resampled: {len(X_train)} → {len(X_resampled)} samples. Distribution: {dist_str_new}")
+            logger.debug(f"Using {method.upper()} with k_neighbors={k_neighbors}")
+            X_resampled, y_resampled = sampler.fit_resample(X_train, y_adjusted)
 
-        return X_resampled, y_resampled
+            # Convert back to DataFrames with original column names
+            X_resampled = pd.DataFrame(X_resampled, columns=X_train.columns)
+            y_resampled = pd.Series(y_resampled - 1, name=y_train.name)  # Convert back to -1, 0, 1
+
+            unique_new, counts_new = np.unique(y_resampled + 1, return_counts=True)
+            dist_str_new = ", ".join([f"Class {cls-1}: {count}" for cls, count in zip(unique_new, counts_new)])
+            logger.info(f"Resampled: {len(X_train)} → {len(X_resampled)} samples. Distribution: {dist_str_new}")
+
+            return X_resampled, y_resampled
+
+        except Exception as e:
+            logger.warning(f"Resampling failed: {e}. Returning original data.")
+            return X_train, y_train
 
     def train_all_models(
         self,
@@ -240,7 +363,7 @@ class FlexTrackPipeline:
         tasks: Optional[List[str]] = None,
     ):
         """
-        Train models for specified tasks
+        Train models for specified tasks with feature selection and ensemble
 
         Args:
             X_train, y_train_class, y_train_reg: Training data
@@ -248,6 +371,16 @@ class FlexTrackPipeline:
             tasks: List of tasks to train for
         """
         logger.info("Starting model training")
+
+        # Feature selection for classification
+        if "classification" in (tasks or self.tasks) and self.feature_selection and len(X_train.columns) > self.n_features:
+            logger.info(f"Performing feature selection: {len(X_train.columns)} -> {self.n_features}")
+            selected_features = self.select_top_features(X_train, y_train_class, self.n_features)
+            X_train = X_train[selected_features]
+            X_val = X_val[selected_features]
+            logger.info(f"Training with {len(selected_features)} selected features")
+        else:
+            logger.info(f"Training with all {len(X_train.columns)} features")
 
         # Traditional ML models
         model_classes = {
@@ -271,12 +404,31 @@ class FlexTrackPipeline:
             else:
                 X_train_balanced, y_train_balanced = X_train, y_train
 
+            # Compute dynamic class weights for advanced imbalance handling
+            if task == "classification" and self.use_advanced_weights:
+                class_weights = self.compute_dynamic_class_weights(y_train_balanced)
+                # Convert to format for models (0, 1, 2 -> weights)
+                weight_dict_adjusted = {k + 1: v for k, v in class_weights.items()}
+            else:
+                weight_dict_adjusted = None
+
             for model_name, ModelClass in model_classes.items():
                 logger.info(f"Training {model_name} ({task})")
 
                 try:
                     # Create model with appropriate parameters
-                    model = ModelClass(task=task)
+                    # Apply dynamic class weights if available
+                    if task == "classification" and weight_dict_adjusted is not None:
+                        if model_name == "LightGBM":
+                            # Update LightGBM params with dynamic weights
+                            model = ModelClass(task=task)
+                            if hasattr(model, 'params'):
+                                model.params['class_weight'] = weight_dict_adjusted
+                        else:
+                            model = ModelClass(task=task)
+                    else:
+                        model = ModelClass(task=task)
+
                     model.train(X_train_balanced, y_train_balanced, X_val, y_val)
 
                     # Store model
@@ -336,6 +488,131 @@ class FlexTrackPipeline:
 
                 except Exception as e:
                     logger.error(f"Error training {model_name}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Create Ensemble if enabled (only for classification)
+            if task == "classification" and self.use_ensemble:
+                logger.info("Creating Ensemble Model (Weighted Voting)")
+
+                try:
+                    # Get probabilities from all trained models
+                    model_probas = []
+                    model_f1s = []
+
+                    for model_name in ["XGBoost", "LightGBM", "CatBoost"]:
+                        key = f"{model_name}_{task}"
+                        if key in self.models and key in self.results:
+                            model = self.models[key]
+                            val_proba = model.predict_proba(X_val)
+                            model_probas.append(val_proba)
+
+                            # Get F1 score for weighting
+                            f1 = self.results[key]["validation"]["f1_score_macro"]
+                            model_f1s.append(f1)
+
+                    if len(model_probas) >= 2:
+                        # Weighted average based on F1 scores
+                        weights = np.array(model_f1s) / sum(model_f1s)
+                        ensemble_proba = np.average(model_probas, axis=0, weights=weights)
+
+                        # Optimize thresholds for ensemble
+                        optimizer = ThresholdOptimizer(classes=[-1, 0, 1])
+                        opt_results = optimizer.optimize_thresholds(
+                            y_val.values, ensemble_proba, metric='f1_macro'
+                        )
+                        val_pred_opt = opt_results['predictions']
+
+                        # Evaluate ensemble
+                        val_results = self.evaluator.evaluate_classification(
+                            y_val, val_pred_opt, detailed=True
+                        )
+
+                        # Create ensemble wrapper
+                        class EnsembleModel:
+                            def __init__(self, models, weights, optimizer):
+                                self.models = models
+                                self.weights = weights
+                                self.optimizer = optimizer
+
+                            def predict_proba(self, X):
+                                probas = [m.predict_proba(X) for m in self.models]
+                                return np.average(probas, axis=0, weights=self.weights)
+
+                            def predict(self, X):
+                                proba = self.predict_proba(X)
+                                return self.optimizer.predict(proba)
+
+                            def save_model(self, filepath):
+                                """Save ensemble - note: saves metadata only, base models saved separately"""
+                                import joblib
+                                joblib.dump({
+                                    'weights': self.weights,
+                                    'optimizer': self.optimizer,
+                                    'model_names': ['XGBoost', 'LightGBM', 'CatBoost']
+                                }, filepath)
+                                logger.debug(f"Ensemble metadata saved to {filepath}")
+
+                        ensemble_models = [self.models[f"{name}_{task}"] for name in ["XGBoost", "LightGBM", "CatBoost"] if f"{name}_{task}" in self.models]
+                        ensemble = EnsembleModel(ensemble_models, weights, optimizer)
+
+                        key = "Ensemble_classification"
+                        self.models[key] = ensemble
+                        self.models[key + "_optimizer"] = optimizer
+                        self.results[key] = {
+                            "train": {},
+                            "validation": val_results,
+                        }
+
+                        logger.info(f"Ensemble Results: Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
+                        logger.info(f"Ensemble weights: XGB={weights[0]:.3f}, LGB={weights[1]:.3f}, CAT={weights[2]:.3f}")
+
+                except Exception as e:
+                    logger.error(f"Error creating ensemble: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Add Cascade Classifier (two-stage hierarchical)
+            if task == "classification":
+                logger.info("Training CASCADE Classifier (Hierarchical)")
+
+                try:
+                    # Create cascade with best performing models
+                    cascade = CascadeClassifier(
+                        stage1_model="xgboost",  # Best for Stage 1
+                        stage2_model="lightgbm",  # Best for minority detection
+                    )
+
+                    # Train cascade
+                    cascade.train(X_train_balanced, y_train_balanced, X_val, y_val)
+
+                    # Get predictions
+                    val_proba = cascade.predict_proba(X_val)
+
+                    # Optimize thresholds
+                    optimizer = ThresholdOptimizer(classes=[-1, 0, 1])
+                    opt_results = optimizer.optimize_thresholds(
+                        y_val.values, val_proba, metric='f1_macro'
+                    )
+                    val_pred_opt = opt_results['predictions']
+
+                    # Evaluate
+                    val_results = self.evaluator.evaluate_classification(
+                        y_val, val_pred_opt, detailed=True
+                    )
+
+                    key = "Cascade_classification"
+                    self.models[key] = cascade
+                    self.models[key + "_optimizer"] = optimizer
+                    self.results[key] = {
+                        "train": {},
+                        "validation": val_results,
+                    }
+
+                    logger.info(f"Cascade Results: Val F1={val_results['f1_score_macro']:.4f}, Val GM={val_results['geometric_mean_score']:.4f}")
+
+                except Exception as e:
+                    logger.error(f"Error training cascade: {str(e)}")
                     import traceback
                     traceback.print_exc()
 
@@ -657,8 +934,8 @@ def main():
         "--sampler",
         type=str,
         default="none",
-        choices=["none", "smote", "adasyn", "smoteenn"],
-        help="Sampling method for class imbalance: none, smote, adasyn, or smoteenn (default: none)",
+        choices=["none", "smote", "adasyn", "smoteenn", "borderline", "svmsmote", "kmeans", "smotetomek"],
+        help="Sampling method for class imbalance (default: none). Advanced options: borderline (recommended), svmsmote, kmeans, smotetomek",
     )
     parser.add_argument(
         "--tasks",
@@ -667,6 +944,48 @@ def main():
         choices=["classification", "regression"],
         default=["classification", "regression"],
         help="Tasks to run: specify one or both of classification and regression (default: both)",
+    )
+    parser.add_argument(
+        "--use-advanced-weights",
+        action="store_true",
+        default=True,
+        help="Use dynamic class weights based on effective samples (default: True, use --no-advanced-weights to disable)",
+    )
+    parser.add_argument(
+        "--no-advanced-weights",
+        dest="use_advanced_weights",
+        action="store_false",
+        help="Disable advanced class weighting",
+    )
+    parser.add_argument(
+        "--use-ensemble",
+        action="store_true",
+        default=True,
+        help="Enable ensemble voting (default: True, use --no-ensemble to disable)",
+    )
+    parser.add_argument(
+        "--no-ensemble",
+        dest="use_ensemble",
+        action="store_false",
+        help="Disable ensemble voting",
+    )
+    parser.add_argument(
+        "--feature-selection",
+        action="store_true",
+        default=True,
+        help="Enable feature selection (default: True, use --no-feature-selection to disable)",
+    )
+    parser.add_argument(
+        "--no-feature-selection",
+        dest="feature_selection",
+        action="store_false",
+        help="Disable feature selection",
+    )
+    parser.add_argument(
+        "--n-features",
+        type=int,
+        default=80,
+        help="Number of features to select (default: 80)",
     )
 
     args = parser.parse_args()
@@ -677,6 +996,10 @@ def main():
         output_dir=args.output_dir,
         sampler=args.sampler,
         tasks=args.tasks,
+        use_advanced_weights=args.use_advanced_weights,
+        use_ensemble=args.use_ensemble,
+        feature_selection=args.feature_selection,
+        n_features=args.n_features,
     )
 
     pipeline.run_full_pipeline(
