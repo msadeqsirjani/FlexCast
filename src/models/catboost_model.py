@@ -31,7 +31,7 @@ class CatBoostModel:
         else:
             self.params = params
 
-    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, cat_features: Optional[List[str]] = None, early_stopping_rounds: int = 50) -> "CatBoostModel":
+    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, cat_features: Optional[List[str]] = None, early_stopping_rounds: int = 50, sample_weight: Optional[np.ndarray] = None) -> "CatBoostModel":
         if self.task == "classification":
             y_train_adjusted = y_train + 1
             if y_val is not None:
@@ -46,9 +46,9 @@ class CatBoostModel:
         else:
             self.model = CatBoostRegressor(**self.params)
         if X_val is not None and y_val is not None:
-            self.model.fit(X_train, y_train_adjusted, eval_set=(X_val, y_val_adjusted), cat_features=cat_features, early_stopping_rounds=early_stopping_rounds, verbose=False)
+            self.model.fit(X_train, y_train_adjusted, eval_set=(X_val, y_val_adjusted), cat_features=cat_features, early_stopping_rounds=early_stopping_rounds, verbose=False, sample_weight=sample_weight)
         else:
-            self.model.fit(X_train, y_train_adjusted, cat_features=cat_features, verbose=False)
+            self.model.fit(X_train, y_train_adjusted, cat_features=cat_features, verbose=False, sample_weight=sample_weight)
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
