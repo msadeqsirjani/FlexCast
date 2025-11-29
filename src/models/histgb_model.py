@@ -29,7 +29,7 @@ class HistGradientBoostingModel:
         else:
             self.params = params
 
-    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, early_stopping_rounds: int = 10) -> "HistGradientBoostingModel":
+    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, early_stopping_rounds: int = 10, sample_weight: Optional[np.ndarray] = None) -> "HistGradientBoostingModel":
         params_copy = self.params.copy()
         params_copy["n_iter_no_change"] = early_stopping_rounds
         if self.task == "classification":
@@ -42,7 +42,7 @@ class HistGradientBoostingModel:
         else:
             y_train_adjusted = y_train
             y_val_adjusted = y_val if y_val is not None else None
-            sample_weights = None
+            sample_weights = sample_weight
             self.model = HistGradientBoostingRegressor(**params_copy)
         if sample_weights is not None:
             self.model.fit(X_train, y_train_adjusted, sample_weight=sample_weights)
