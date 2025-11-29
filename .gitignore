@@ -118,3 +118,5 @@ tensorboard/
 *.ipynb
 !notebooks/*.ipynb  # Keep notebooks in notebooks/ directory
 catboost_info/
+
+data/
