@@ -122,6 +122,19 @@ class FlexTrackPipeline:
         weights = {cls - 1: w for cls, w in zip(unique_classes, weights_array)}
         return weights
 
+    def compute_regression_sample_weights(self, y_train):
+        y_values = y_train.values if hasattr(y_train, 'values') else y_train
+        n_bins = min(10, len(np.unique(y_values)))
+        bins = np.percentile(y_values, np.linspace(0, 100, n_bins + 1))
+        bins = np.unique(bins)
+        bin_indices = np.digitize(y_values, bins[:-1]) - 1
+        bin_indices = np.clip(bin_indices, 0, len(bins) - 2)
+        unique_bins, counts = np.unique(bin_indices, return_counts=True)
+        bin_weights = 1.0 / (counts + 1)
+        bin_weights = bin_weights / bin_weights.mean()
+        sample_weights = np.array([bin_weights[unique_bins == bin_idx][0] for bin_idx in bin_indices])
+        return sample_weights
+
     def apply_resampling(self, X_train, y_train, method='smote'):
         y_adjusted = y_train + 1
         _, counts = np.unique(y_adjusted, return_counts=True)
@@ -185,6 +198,10 @@ class FlexTrackPipeline:
             else:
                 weight_dict_adjusted = None
 
+            regression_sample_weights = None
+            if task == "regression" and self.use_advanced_weights:
+                regression_sample_weights = self.compute_regression_sample_weights(y_train_balanced)
+
             for model_name, ModelClass in model_classes.items():
                 print(f"Training {model_name} ({task})...")
                 try:
@@ -198,7 +215,10 @@ class FlexTrackPipeline:
                     else:
                         model = ModelClass(task=task)
 
-                    model.train(X_train_balanced, y_train_balanced, X_val, y_val)
+                    if task == "regression" and regression_sample_weights is not None:
+                        model.train(X_train_balanced, y_train_balanced, X_val, y_val, sample_weight=regression_sample_weights)
+                    else:
+                        model.train(X_train_balanced, y_train_balanced, X_val, y_val)
                     key = f"{model_name}_{task}"
                     self.models[key] = model
 
@@ -278,6 +298,48 @@ class FlexTrackPipeline:
                 except Exception as e:
                     print(f"Error training cascade: {str(e)}")
 
+            if task == "regression" and self.use_ensemble:
+                print("\nCreating Ensemble Model (Weighted Average)...")
+                try:
+                    model_preds = []
+                    model_maes = []
+                    for model_name in ["XGBoost", "LightGBM", "CatBoost"]:
+                        key = f"{model_name}_{task}"
+                        if key in self.models and key in self.results:
+                            model = self.models[key]
+                            val_pred = model.predict(X_val)
+                            model_preds.append(val_pred)
+                            mae = self.results[key]["validation"]["mae"]
+                            model_maes.append(mae)
+
+                    if len(model_preds) >= 2:
+                        mae_array = np.array(model_maes)
+                        weights = 1.0 / (mae_array + 1e-10)
+                        weights = weights / weights.sum()
+                        ensemble_pred = np.average(model_preds, axis=0, weights=weights)
+                        val_results = self.evaluator.evaluate_regression(y_val, ensemble_pred, self.building_power_stats)
+
+                        class EnsembleRegressor:
+                            def __init__(self, models, weights):
+                                self.models = models
+                                self.weights = weights
+                            def predict(self, X):
+                                preds = [m.predict(X) for m in self.models]
+                                return np.average(preds, axis=0, weights=self.weights)
+                            def save_model(self, filepath):
+                                import joblib
+                                joblib.dump({'weights': self.weights, 'model_names': ['XGBoost', 'LightGBM', 'CatBoost']}, filepath)
+
+                        ensemble_models = [self.models[f"{name}_{task}"] for name in ["XGBoost", "LightGBM", "CatBoost"] if f"{name}_{task}" in self.models]
+                        ensemble = EnsembleRegressor(ensemble_models, weights)
+                        key = "Ensemble_regression"
+                        self.models[key] = ensemble
+                        self.results[key] = {"train": {}, "validation": val_results}
+                        print(f"  Ensemble: Val MAE={val_results['mae']:.4f}, Val RMSE={val_results['rmse']:.4f}")
+                        print(f"  Weights: XGB={weights[0]:.3f}, LGB={weights[1]:.3f}, CAT={weights[2]:.3f}")
+                except Exception as e:
+                    print(f"Error creating ensemble: {str(e)}")
+
     def evaluate_and_compare(self):
         print("\n" + "="*50)
         print("MODEL COMPARISON")
@@ -307,11 +369,26 @@ class FlexTrackPipeline:
 
     def save_results(self, site: str = "siteA", subfolder: str = None):
         print("\nSaving results...")
-        results_path = self.output_dir / f"results_{site}.json"
-        save_results_json(self.results, str(results_path))
-        report_path = self.output_dir / f"comparison_report_{site}.txt"
-        all_results = {name: results["validation"] for name, results in self.results.items()}
-        create_summary_report(all_results, str(report_path), task=self._get_summary_task_mode())
+
+        for task in self.tasks:
+            task_dir = self.output_dir / task
+            metrics_dir = task_dir / "metrics"
+            summarize_dir = task_dir / "summarize"
+            metrics_dir.mkdir(exist_ok=True, parents=True)
+            summarize_dir.mkdir(exist_ok=True, parents=True)
+
+            task_results = {name: results for name, results in self.results.items() if task in name}
+
+            if task_results:
+                results_path = metrics_dir / f"results_{site}.json"
+                save_results_json(task_results, str(results_path))
+
+                report_path = summarize_dir / f"comparison_report_{site}.txt"
+                all_results = {name: results["validation"] for name, results in task_results.items()}
+                create_summary_report(all_results, str(report_path), task=task)
+
+                print(f"  {task.capitalize()} Metrics:   {results_path}")
+                print(f"  {task.capitalize()} Summarize: {report_path}")
 
         if subfolder:
             models_dir = Path("../models") / subfolder
@@ -324,7 +401,6 @@ class FlexTrackPipeline:
                 model_path = models_dir / f"{name}_{site}.pkl"
                 model.save_model(str(model_path))
 
-        print(f"  Results: {results_path}")
         print(f"  Models: {models_dir}")
 
     def _get_summary_task_mode(self) -> str:
@@ -380,19 +456,38 @@ class FlexTrackPipeline:
         return self.models, self.results
 
     def _print_cross_site_comparison(self, all_site_results: dict):
-        comp_path = self.output_dir / "cross_site_comparison.txt"
-        with open(comp_path, "w") as f:
-            f.write("CROSS-SITE PERFORMANCE COMPARISON\n" + "=" * 80 + "\n")
-            for site, data in all_site_results.items():
-                f.write(f"\n{site.upper()}:\n")
-                for name, res in data["results"].items():
-                    vr = res["validation"]
-                    f.write(f"  {name}:\n")
-                    if "classification" in name:
-                        f.write(f"    F1: {vr['f1_score_macro']:.4f}, GM: {vr['geometric_mean_score']:.4f}\n")
-                    elif "regression" in name:
-                        cv_rmse_val = vr.get('cv_rmse', 0.0)
-                        f.write(f"    MAE: {vr['mae']:.4f}, RMSE: {vr['rmse']:.4f}, CV-RMSE: {cv_rmse_val:.4f}\n")
+        for task in self.tasks:
+            task_dir = self.output_dir / task
+            summarize_dir = task_dir / "summarize"
+            summarize_dir.mkdir(exist_ok=True, parents=True)
+            comp_path = summarize_dir / "cross_site_comparison.txt"
+
+            with open(comp_path, "w") as f:
+                f.write(f"CROSS-SITE PERFORMANCE COMPARISON - {task.upper()}\n" + "=" * 100 + "\n")
+                for site, data in all_site_results.items():
+                    f.write(f"\n{site.upper()}:\n" + "-" * 100 + "\n")
+                    for name, res in data["results"].items():
+                        if task in name:
+                            vr = res["validation"]
+                            f.write(f"\n  {name}:\n")
+                            if "classification" in name:
+                                f.write(f"    F1 Scores:\n")
+                                f.write(f"      Macro:     {vr['f1_score_macro']:.4f}\n")
+                                f.write(f"      Micro:     {vr['f1_score_micro']:.4f}\n")
+                                f.write(f"      Weighted:  {vr['f1_score_weighted']:.4f}\n")
+                                f.write(f"    F1 Per Class:\n")
+                                f.write(f"      Class -1:  {vr.get('f1_score_class_-1', 0):.4f}\n")
+                                f.write(f"      Class  0:  {vr.get('f1_score_class_0', 0):.4f}\n")
+                                f.write(f"      Class +1:  {vr.get('f1_score_class_1', 0):.4f}\n")
+                                f.write(f"    Geometric Mean: {vr['geometric_mean_score']:.4f}\n")
+                                f.write(f"    Accuracy:       {vr['accuracy']:.4f}\n")
+                            elif "regression" in name:
+                                cv_rmse_val = vr.get('cv_rmse', 0.0)
+                                f.write(f"    MAE:     {vr['mae']:.4f}\n")
+                                f.write(f"    RMSE:    {vr['rmse']:.4f}\n")
+                                f.write(f"    CV-RMSE: {cv_rmse_val:.4f}\n")
+
+            print(f"  {task.capitalize()} cross-site comparison: {comp_path}")
 
     def run_full_pipeline(self, site: str = "siteA", version: str = "v0.2", training_mode: str = "single"):
         sites = ["siteA", "siteB", "siteC"]
