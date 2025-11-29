@@ -1,0 +1,37 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{cite}
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\begin{document}
+
+\title{Optimization Strategies for Energy Flexibility Prediction in Demand Response Systems}
+
+% \author{\IEEEauthorblockN{Mohammad Sadegh Sirjani}
+% \IEEEauthorblockA{\textit{Department of Computer Science} \\
+% \textit{The University of Texas at San Antonio}\\
+% San Antonio, USA \\
+% mohammadsadegh.sirjani@utsa.edu}}
+
+\maketitle
+
+\begin{abstract}
+Predicting energy flexibility in demand response systems presents significant challenges due to severe class imbalance, high-dimensional feature spaces, and the dual requirements of classification and regression. We address these issues through an optimization framework combining feature selection, advanced weighting schemes, synthetic oversampling, ensemble methods, and cascade classifiers. Evaluation across three commercial building sites demonstrates minority class F1-score improvements of 15-25\%, sparse region RMSE reductions of 10-15\%, and overall performance gains of 2-5\% from ensemble methods. Our cascade classifier achieves geometric mean scores of 50-52\%, outperforming direct multi-class approaches in balancing performance across rare event types. The framework's modular design enables practitioners to select optimizations matching their computational resources and performance objectives.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Demand Response, Energy Flexibility, Class Imbalance, Ensemble Learning, Gradient Boosting
+\end{IEEEkeywords}
+
+\input{sections/introduction}
+\input{sections/methodology}
+\input{sections/results}
+\input{sections/conclusion}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
