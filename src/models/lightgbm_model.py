@@ -33,7 +33,7 @@ class LightGBMModel:
         else:
             self.params = params
 
-    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, early_stopping_rounds: int = 50) -> "LightGBMModel":
+    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, early_stopping_rounds: int = 50, sample_weight: Optional[np.ndarray] = None) -> "LightGBMModel":
         if self.task == "classification":
             y_train_adjusted = y_train + 1
             if y_val is not None:
@@ -41,6 +41,7 @@ class LightGBMModel:
         else:
             y_train_adjusted = y_train
             y_val_adjusted = y_val if y_val is not None else None
+        self.sample_weight = sample_weight
         if self.task == "classification":
             self.model = lgb.LGBMClassifier(**self.params)
         else:
@@ -48,9 +49,9 @@ class LightGBMModel:
         callbacks = []
         if X_val is not None and y_val is not None:
             callbacks.append(lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=False))
-            self.model.fit(X_train, y_train_adjusted, eval_set=[(X_val, y_val_adjusted)], callbacks=callbacks)
+            self.model.fit(X_train, y_train_adjusted, eval_set=[(X_val, y_val_adjusted)], callbacks=callbacks, sample_weight=self.sample_weight)
         else:
-            self.model.fit(X_train, y_train_adjusted)
+            self.model.fit(X_train, y_train_adjusted, sample_weight=self.sample_weight)
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
