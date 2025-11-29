@@ -1,0 +1,67 @@
+WRITING STYLE REQUIREMENTS FOR ACADEMIC PAPER
+
+Write in a professional, academic, ACM-style format with the following strict requirements:
+
+TONE & STYLE:
+- Professional and academic
+- Human-written, NOT AI-generated
+- Natural and conversational academic tone
+- Avoid mechanical or formulaic patterns
+- Vary sentence structure and length
+- Sound like a researcher analyzing their work
+
+SENTENCE STRUCTURE:
+- Keep sentences short and concise
+- Avoid overly complex constructions
+- Use simple, direct language when possible
+- Break long sentences into shorter ones
+- One idea per sentence
+
+PUNCTUATION & FORMATTING:
+- NO em-dashes (—)
+- NO emojis
+- Use commas, periods, and semicolons appropriately
+- Use parentheses for asides and lists
+- Standard academic punctuation only
+
+CONTENT REQUIREMENTS:
+- Short and concise overall
+- Every word must serve a purpose
+- Remove redundancy
+- Focus on key findings and methods
+- No unnecessary elaboration
+
+LANGUAGE PATTERNS TO AVOID (AI-written indicators):
+- "This demonstrates that..."
+- "It is important to note that..."
+- "Moreover," "Furthermore," "Additionally" at start of every sentence
+- Repetitive sentence starters
+- Overly formal or stilted language
+- Lists of factors without context
+- Mechanical transitions
+
+LANGUAGE PATTERNS TO USE (Human-written indicators):
+- Varied sentence starters
+- Natural flow between ideas
+- Direct statements without hedging (when appropriate)
+- Active voice where suitable
+- Specific examples over generalizations
+- Results-focused language
+- Concise technical descriptions
+
+TECHNICAL WRITING:
+- Define metrics clearly once, then use them
+- Present results directly
+- Compare meaningfully
+- Interpret findings, don't just state them
+- Acknowledge limitations honestly
+- Use standard academic vocabulary
+
+ORGANIZATION:
+- Clear subsections
+- Logical flow
+- Each paragraph has one main point
+- Smooth transitions between paragraphs
+- Results before interpretation
+
+REMEMBER: Write like a human researcher would write, not like an AI assistant would generate.
