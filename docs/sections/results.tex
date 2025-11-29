@@ -1,0 +1,51 @@
+\section{Experimental Results}
+
+We evaluate our framework across three commercial building sites, comparing XGBoost~\cite{chen2016xgboost}, LightGBM~\cite{ke2017lightgbm}, CatBoost~\cite{prokhorenkova2018catboost}, Histogram Gradient Boosting, ensemble methods, and the cascade classifier. All experiments use time-based splits to maintain temporal consistency.
+
+\subsection{Overall Performance}
+
+Figure~\ref{fig:accuracy} presents performance across sites and models. For comparability, classification tasks report accuracy while regression tasks use $(1 - \text{NMAE}_{\text{range}})$.
+
+Classification scores range from 70-98\%, substantially exceeding regression scores of 45-55\%. This gap reflects the inherent difficulty of precise capacity prediction compared to event detection. Ensemble methods achieve the highest performance across all three sites. While Site A demonstrates the strongest results overall, Site C poses greater challenges due to more variable occupancy patterns. Notably, the cascade classifier matches the top accuracy scores while providing better interpretability through its hierarchical structure.
+
+\begin{figure*}[!htbp]
+\centerline{\includegraphics[width=0.95\textwidth]{../analyze/figures/accuracy.png}}
+\caption{Performance comparison across sites. Classification (blue) uses accuracy; regression (red) uses $(1 - \text{NMAE}_{\text{range}})$. Grouped bars enable direct comparison of both tasks.}
+\label{fig:accuracy}
+\end{figure*}
+
+\subsection{Classification Analysis}
+
+Figure~\ref{fig:f1scores} decomposes F1-scores using three averaging schemes: macro (unweighted class average), micro (global average), and weighted (frequency-weighted average). For imbalanced datasets, macro F1 provides the most informative assessment of minority class performance.
+
+The ensemble attains the highest weighted F1-scores at 96.6-96.9\%, yet achieves only 39.3-41.4\% macro F1. This disparity underscores the persistent challenge of detecting rare events. LightGBM and XGBoost similarly reach weighted F1 above 96\%. In contrast, CatBoost and Histogram Gradient Boosting exhibit more balanced macro F1 scores of 33-35\%, albeit with lower overall accuracy.
+
+All models surpass 97\% micro F1. This high performance primarily stems from accurately predicting the dominant no-event class. The substantial gap between micro and macro F1 quantifies the severity of the class imbalance problem.
+
+\begin{figure*}[!htbp]
+\centerline{\includegraphics[width=0.95\textwidth]{figures/f1_scores.png}}
+\caption{F1-score breakdown across sites. Macro (green), micro (orange), and weighted (purple) scores shown. The gap between micro and macro reveals difficulty detecting rare events in imbalanced data.}
+\label{fig:f1scores}
+\end{figure*}
+
+\subsection{Geometric Mean Performance}
+
+Figure~\ref{fig:gmean} presents the geometric mean of per-class recall, a metric specifically designed for imbalanced classification. Unlike F1-score, G-Mean requires all classes to achieve reasonable recall, making it particularly sensitive to minority class performance.
+
+The cascade classifier achieves the highest G-Mean scores at 50-52\% across all sites. The ensemble method follows closely with 49.9-50\%. Individual models span a wider range from 38.5-51.4\%, with CatBoost demonstrating the most balanced per-class performance despite lower overall accuracy.
+
+Notably, all G-Mean scores remain below 52\%. This ceiling reflects the fundamental difficulty of detecting rare events that comprise less than 0.1\% of samples, even with extensive optimization. The low variance in G-Mean across sites—under 5\%—indicates robust generalization of our methods to different building characteristics.
+
+\begin{figure*}[!htbp]
+\centerline{\includegraphics[width=0.95\textwidth]{figures/g_mean.png}}
+\caption{G-Mean scores across sites. The cascade classifier achieves 50-52\%, demonstrating superior minority class handling through hierarchical decomposition.}
+\label{fig:gmean}
+\end{figure*}
+
+\subsection{Regression Performance}
+
+For regression tasks, the ensemble achieves the lowest errors on Site A with MAE of 0.161 kW and RMSE of 0.495 kW. This represents a 7\% improvement over the best individual model, LightGBM, which attains 0.173 kW MAE. Our sample weighting scheme contributes to a 10-12\% reduction in CV-RMSE.
+
+Among individual models, LightGBM demonstrates superior performance, followed by CatBoost and XGBoost. Histogram Gradient Boosting yields weaker regression results, likely because its default binning strategy proves suboptimal for continuous capacity prediction.
+
+Algorithm selection affects regression performance more substantially than classification. MAE values span from 0.173 to 0.360 kW, whereas classification accuracy remains within a narrow range. Similarly, regression performance exhibits greater cross-site variability, with CV exceeding 15\%. This suggests that building-specific factors—such as occupancy patterns and HVAC system characteristics—significantly influence capacity prediction difficulty.
