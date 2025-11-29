@@ -32,7 +32,7 @@ class XGBoostModel:
         else:
             self.params = params
 
-    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, early_stopping_rounds: int = 50) -> "XGBoostModel":
+    def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: Optional[pd.DataFrame] = None, y_val: Optional[pd.Series] = None, early_stopping_rounds: int = 50, sample_weight: Optional[np.ndarray] = None) -> "XGBoostModel":
         if self.task == "classification":
             y_train_adjusted = y_train + 1
             if y_val is not None:
@@ -42,7 +42,7 @@ class XGBoostModel:
         else:
             y_train_adjusted = y_train
             y_val_adjusted = y_val if y_val is not None else None
-            sample_weights = None
+            sample_weights = sample_weight
         if self.task == "classification":
             self.model = xgb.XGBClassifier(**self.params)
         else:
