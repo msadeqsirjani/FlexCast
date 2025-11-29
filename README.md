@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/msadeqsirjani/FlexCast
 cd FlexCast
 python -m venv .venv
 source .venv/bin/activate
