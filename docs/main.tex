@@ -19,7 +19,7 @@
 \maketitle
 
 \begin{abstract}
-Predicting energy flexibility in demand response systems presents significant challenges due to severe class imbalance, high-dimensional feature spaces, and the dual requirements of classification and regression. We address these issues through an optimization framework combining feature selection, advanced weighting schemes, synthetic oversampling, ensemble methods, and cascade classifiers. Evaluation across three commercial building sites demonstrates minority class F1-score improvements of 15-25\%, sparse region RMSE reductions of 10-15\%, and overall performance gains of 2-5\% from ensemble methods. Our cascade classifier achieves geometric mean scores of 50-52\%, outperforming direct multi-class approaches in balancing performance across rare event types. The framework's modular design enables practitioners to select optimizations matching their computational resources and performance objectives.
+Energy flexibility prediction faces three key challenges: severe class imbalance with events occurring less than 0.1\% of the time, high-dimensional redundant features, and the need for both classification and regression. This work presents an optimization framework combining feature selection, class weighting, synthetic oversampling, ensemble methods, and cascade classifiers. Testing across three commercial buildings shows minority class F1-scores improve by 15-25\%, sparse region RMSE drops by 10-15\%, and ensembles gain 2-5\% overall. The cascade classifier reaches 50-52\% geometric mean, better balancing performance across rare events than direct multi-class methods. Each optimization can be applied independently based on computational constraints.
 \end{abstract}
 
 \begin{IEEEkeywords}
