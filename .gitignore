@@ -120,3 +120,17 @@ tensorboard/
 catboost_info/
 
 data/
+
+main.aux
+main.bbl
+main.blg
+main.log
+main.toc
+main.lot
+main.lof
+main.lol
+main.loa
+main.synctex.gz
+main.fdb_latexmk
+main.fls
+main.fot
