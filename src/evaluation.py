@@ -63,9 +63,11 @@ class Evaluator:
             if power_mean and power_mean > 0:
                 results["nmae_mean"] = (mae / power_mean) * 100
                 results["nrmse_mean"] = (rmse / power_mean) * 100
-        y_mean = np.mean(y_true)
-        if y_mean > 0:
-            results["cv_rmse"] = (rmse / y_mean) * 100
+        y_nonzero = y_true[y_true != 0]
+        if len(y_nonzero) > 0:
+            y_mean = np.abs(np.mean(y_nonzero))
+            if y_mean > 0:
+                results["cv_rmse"] = (rmse / y_mean) * 100
         return results
 
     def evaluate_combined(self, y_true_class: np.ndarray, y_pred_class: np.ndarray, y_true_reg: np.ndarray, y_pred_reg: np.ndarray, building_power_stats: Dict[str, float] = None) -> Dict[str, Dict]:
