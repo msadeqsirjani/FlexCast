@@ -60,6 +60,8 @@ def plot_accuracy(results_dir="../results"):
     results_dir = Path(results_dir)
     output_dir = Path("figures")
     output_dir.mkdir(exist_ok=True)
+    docs_output_dir = Path("../docs/figures")
+    docs_output_dir.mkdir(exist_ok=True, parents=True)
     sites = ["siteA", "siteB", "siteC"]
     fig, axes = plt.subplots(1, 3, figsize=(7.5, 2.8))
 
@@ -132,6 +134,7 @@ def plot_accuracy(results_dir="../results"):
 
     plt.tight_layout(rect=[0, 0, 1, 0.88])
     plt.savefig(output_dir / "accuracy.png", dpi=300, bbox_inches="tight", facecolor="white")
+    plt.savefig(docs_output_dir / "accuracy.png", dpi=300, bbox_inches="tight", facecolor="white")
     plt.close()
 
 
@@ -139,6 +142,8 @@ def plot_f1_scores(results_dir="../results"):
     results_dir = Path(results_dir)
     output_dir = Path("figures")
     output_dir.mkdir(exist_ok=True)
+    docs_output_dir = Path("../docs/figures")
+    docs_output_dir.mkdir(exist_ok=True, parents=True)
     sites = ["siteA", "siteB", "siteC"]
     fig, axes = plt.subplots(1, 3, figsize=(7.5, 2.8))
 
@@ -213,6 +218,7 @@ def plot_f1_scores(results_dir="../results"):
 
     plt.tight_layout(rect=[0, 0, 1, 0.88])
     plt.savefig(output_dir / "f1_scores.png", dpi=300, bbox_inches="tight", facecolor="white")
+    plt.savefig(docs_output_dir / "f1_scores.png", dpi=300, bbox_inches="tight", facecolor="white")
     plt.close()
 
 
@@ -220,6 +226,8 @@ def plot_gmean(results_dir="../results"):
     results_dir = Path(results_dir)
     output_dir = Path("figures")
     output_dir.mkdir(exist_ok=True)
+    docs_output_dir = Path("../docs/figures")
+    docs_output_dir.mkdir(exist_ok=True, parents=True)
     sites = ["siteA", "siteB", "siteC"]
     fig, axes = plt.subplots(1, 3, figsize=(7.5, 2.8))
 
@@ -254,6 +262,7 @@ def plot_gmean(results_dir="../results"):
 
     plt.tight_layout()
     plt.savefig(output_dir / "g_mean.png", dpi=300, bbox_inches="tight", facecolor="white")
+    plt.savefig(docs_output_dir / "g_mean.png", dpi=300, bbox_inches="tight", facecolor="white")
     plt.close()
 
 
