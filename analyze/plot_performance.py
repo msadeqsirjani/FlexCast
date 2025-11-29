@@ -114,7 +114,7 @@ def plot_accuracy(results_dir="../results"):
         ax.set_xticklabels(algos, rotation=45, ha="right", fontsize=9)
         ax.set_xlim([-0.6, len(algos) - 0.4])
         ax.set_ylim([0, 108])
-        ax.set_ylabel("Accuracy (%)", fontsize=11)
+        ax.set_ylabel("Performance Score (%)", fontsize=11)
         setup_ax(ax, site)
 
     handles, labels = axes[0].get_legend_handles_labels()
