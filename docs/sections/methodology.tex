@@ -1,63 +1,63 @@
 \section{Methodology}
 
-Our framework targets the key challenges in energy flexibility prediction through six complementary optimization strategies, each applicable to classification, regression, or both tasks.
+We address energy flexibility prediction challenges through six optimization strategies. Each applies to classification, regression, or both.
 
 \subsection{Feature Selection}
 
-Energy system data typically contains over 100 engineered features, introducing substantial redundancy and noise. We employ Random Forest-based feature importance~\cite{breiman2001random} to identify discriminative features, computing importance for each feature $f_i$ as:
+Energy systems generate over 100 engineered features with substantial redundancy and noise. We use Random Forest feature importance~\cite{breiman2001random} to rank features:
 \begin{equation}
     \text{Importance}(f_i) = \frac{1}{T}\sum_{t=1}^{T} \Delta\text{Gini}(f_i, t)
 \end{equation}
-where $T$ represents the number of trees and $\Delta\text{Gini}(f_i, t)$ denotes the Gini impurity decrease for feature $f_i$ in tree $t$.
+where $T$ is the number of trees and $\Delta\text{Gini}(f_i, t)$ is the Gini impurity decrease for feature $f_i$ in tree $t$.
 
-Selecting the top 80 features reduces dimensionality by 40\%. These features primarily capture temporal patterns, statistical aggregations, and lag-based dependencies. Beyond improving computational efficiency—training time decreases by 2-3$\times$ for tree-based models—this reduction also mitigates overfitting.
+We keep the top 80 features, cutting dimensionality by 40\%. These capture temporal patterns, statistical aggregations, and lag dependencies. Training time drops 2-3$\times$ for tree-based models. The smaller feature set also reduces overfitting.
 
 \subsection{Advanced Class Weighting for Classification}
 
-Our dataset exhibits severe imbalance, with event-to-no-event ratios between 1:100 and 1:1000. Standard training procedures bias models toward the majority class~\cite{he2009learning}. To address this, we adopt effective number-based weighting~\cite{cui2019class}:
+The dataset shows severe imbalance with event-to-no-event ratios between 1:100 and 1:1000. Standard training biases models toward the majority class~\cite{he2009learning}. We use effective number-based weighting~\cite{cui2019class}:
 \begin{equation}
     w_c = \frac{1 - \beta}{1 - \beta^{n_c}}
 \end{equation}
-where $n_c$ denotes the sample count for class $c$ and $\beta = 0.9999$. For extreme minority classes satisfying $n_c < 0.1 \times n_{\text{max}}$, we apply an additional 5$\times$ penalty.
+where $n_c$ is the sample count for class $c$ and $\beta = 0.9999$. For extreme minority classes where $n_c < 0.1 \times n_{\text{max}}$, we add a 5$\times$ penalty.
 
-This approach improves minority class F1-scores by 15-25\% while enhancing geometric mean scores. Importantly, the weighting scheme adapts automatically to varying imbalance ratios without requiring manual tuning.
+This improves minority class F1-scores by 15-25\% and boosts geometric mean scores. The scheme adapts automatically to different imbalance ratios without manual tuning.
 
 \subsection{Sample Weighting for Regression}
 
-Regression targets exhibit non-uniform distributions, with certain capacity ranges densely populated while others remain sparse. Without accounting for this imbalance, models achieve high accuracy on common values but perform poorly in sparse regions. We assign sample weights based on bin occupancy:
+Regression targets show non-uniform distributions. Some capacity ranges have many samples while others are sparse. Without weighting, models work well on common values but fail in sparse regions. We weight samples by bin occupancy:
 \begin{equation}
     w_i = \frac{1}{n_{\text{bin}(i)}} \cdot \frac{1}{\bar{w}}
 \end{equation}
-where $n_{\text{bin}(i)}$ represents the bin count and $\bar{w}$ normalizes weights to unit mean. We partition the target space into 10 percentile-based bins.
+where $n_{\text{bin}(i)}$ is the bin count and $\bar{w}$ normalizes to unit mean. We use 10 percentile-based bins.
 
-This weighting scheme reduces RMSE in sparse regions by 10-15\% while improving CV-RMSE, incurring negligible computational overhead.
+This cuts RMSE in sparse regions by 10-15\% and improves CV-RMSE with minimal computational cost.
 
 \subsection{Data Resampling for Classification}
 
-We apply SMOTE~\cite{chawla2002smote} to generate synthetic minority class samples via linear interpolation:
+We use SMOTE~\cite{chawla2002smote} to create synthetic minority samples through linear interpolation:
 \begin{equation}
     \mathbf{x}_{\text{new}} = \mathbf{x}_i + \lambda \cdot (\mathbf{x}_{\text{nn}} - \mathbf{x}_i)
 \end{equation}
-where $\mathbf{x}_{\text{nn}}$ denotes a $k$-nearest neighbor of $\mathbf{x}_i$ and $\lambda \sim U(0,1)$. Our resampling strategy upsamples minority classes to match the majority class count.
+where $\mathbf{x}_{\text{nn}}$ is a $k$-nearest neighbor of $\mathbf{x}_i$ and $\lambda \sim U(0,1)$. We upsample minority classes to match the majority class count.
 
-SMOTE produces smoother decision boundaries and complements class weighting effectively. While this combined approach enhances minority class detection, it increases training time by 10-20\%.
+SMOTE creates smoother decision boundaries and works well with class weighting. The combination helps minority class detection but adds 10-20\% to training time.
 
 \subsection{Ensemble Models}
 
-We construct ensembles combining XGBoost~\cite{chen2016xgboost}, LightGBM~\cite{ke2017lightgbm}, and CatBoost~\cite{prokhorenkova2018catboost} through weighted voting. For classification tasks, we employ F1-weighted soft voting:
+We combine XGBoost~\cite{chen2016xgboost}, LightGBM~\cite{ke2017lightgbm}, and CatBoost~\cite{prokhorenkova2018catboost} using weighted voting. For classification, we use F1-weighted soft voting:
 \begin{equation}
     \hat{y} = \argmax_c \sum_{m=1}^{M} w_m \cdot P_m(y=c|\mathbf{x}), \quad w_m = \frac{\text{F1}_m}{\sum_{m'} \text{F1}_{m'}}
 \end{equation}
-For regression, predictions are averaged using MAE-based weights:
+For regression, we average predictions with MAE-based weights:
 \begin{equation}
     \hat{y} = \sum_{m=1}^{M} w_m \cdot \hat{y}_m, \quad w_m = \frac{1/\text{MAE}_m}{\sum_{m'} 1/\text{MAE}_{m'}}
 \end{equation}
 
-These ensembles consistently outperform individual models by 2-5\% across all metrics. While training cost increases by 3$\times$, inference speed remains comparable to single models.
+Ensembles beat individual models by 2-5\% across all metrics. Training costs 3$\times$ more but inference stays fast.
 
 \subsection{Cascade Classifier for Classification}
 
-Rather than directly solving the ternary classification problem, we decompose it hierarchically into two stages. Stage 1 employs XGBoost to distinguish events from no-events. For samples classified as events, Stage 2 uses LightGBM to determine the event type:
+Instead of solving ternary classification directly, we split it into two stages. Stage 1 uses XGBoost to separate events from no-events. Stage 2 uses LightGBM to classify event types:
 \begin{equation}
     \hat{y} =
     \begin{cases}
@@ -66,4 +66,4 @@ Rather than directly solving the ternary classification problem, we decompose it
     \end{cases}
 \end{equation}
 
-This decomposition offers several advantages. The binary classification in Stage 1 proves easier to optimize than the full ternary problem. Since most samples correspond to no-events, early filtering reduces overall inference time. Empirically, the cascade achieves G-Mean scores of 50-52\%, outperforming all other approaches in balancing performance across classes.
+The binary problem in Stage 1 is easier to optimize than the full ternary task. Most samples are no-events, so early filtering cuts inference time. The cascade reaches 50-52\% G-Mean, beating all other methods at balancing performance across classes.
