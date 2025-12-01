@@ -1,0 +1,58 @@
+\section{Dataset and Data Analysis}
+
+We use the FlexTrack 2025 dataset with time-series data from three commercial buildings spanning 2019-2023. The dataset contains 105,120 samples at 15-minute resolution. Each sample includes temperature, solar radiation, building power, and demand response labels.
+
+\subsection{Class Imbalance}
+
+The data shows severe class imbalance (Figure~\ref{fig:class_imbalance}). Site A has 4.5\% DR events and 95.5\% non-events. Sites B and C are worse at 2.2\% and 1.8\% DR events. This creates imbalance ratios up to 1:50, making standard classifiers ineffective.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/data_class_imbalance.png}
+\caption{Class distribution across sites. DR events represent less than 5\% of samples.}
+\label{fig:class_imbalance}
+\end{figure}
+
+\subsection{Feature Distributions}
+
+Temperature ranges from 2.4°C to 43.2°C with site-specific patterns (Figure~\ref{fig:feature_dist}). Site C shows higher variability (median 18.5°C) than Sites A and B (16.2°C and 17.8°C). Building power varies significantly, with Site C consuming more (median 8.2 kW) than Sites A and B (5.1 kW and 6.3 kW). These differences suggest distinct building characteristics affecting prediction difficulty.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/data_feature_distributions.png}
+\caption{Feature distributions across sites. Box plots show median, quartiles, and outliers.}
+\label{fig:feature_dist}
+\end{figure}
+
+\subsection{Temporal Patterns}
+
+DR events concentrate during afternoon hours (Figure~\ref{fig:temporal}). Peak DR capacity occurs between 14:00-20:00 across all sites. Site A averages 3.2 kW during peak hours, while Sites B and C average 2.1 kW and 1.8 kW. Activation rates peak between 15:00-18:00. These patterns justify time-based validation splits and temporal feature engineering.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/data_temporal_patterns.png}
+\caption{Hourly patterns of DR capacity (top) and activation rate (bottom). Red regions mark peak DR periods (14:00-20:00).}
+\label{fig:temporal}
+\end{figure}
+
+\subsection{Target Variable Distribution}
+
+DR capacity shows both positive (load reduction) and negative (load increase) values (Figure~\ref{fig:target_dist}). Positive values dominate at 78-82\% of non-zero events. Site A ranges from -129.4 kW to 148.0 kW with mean -0.08 kW. The bimodal distribution requires regression weighting to handle both clusters accurately.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/data_target_distribution.png}
+\caption{DR capacity distribution (excluding zeros). Positive values indicate load reduction.}
+\label{fig:target_dist}
+\end{figure}
+
+\subsection{Seasonal Patterns}
+
+DR events cluster in summer months (Figure~\ref{fig:monthly}). June through September account for 65-72\% of annual DR events, matching peak cooling demand. Building power increases 15-20\% during summer. These seasonal effects inform our feature engineering with monthly indicators.
+
+\begin{figure}[!htbp]
+\centering
+\includegraphics[width=0.48\textwidth]{figures/data_monthly_statistics.png}
+\caption{Monthly DR events (top) and building power (bottom). Red region highlights peak DR season (June-September).}
+\label{fig:monthly}
+\end{figure}
